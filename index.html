@@ -160,7 +160,7 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
       <div><i style="background:var(--sky)"></i>light needs breath. stand still to breathe in.</div>
       <div><i style="background:var(--gold)"></i>quieted shadows leave light behind. gather it to grow.</div>
     </div>
-    <div style="margin-top:14px"><button class="tog" id="musicTog">music</button><button class="tog" id="sfxTog">sound</button><button class="tog" id="numTog">numbers</button></div>
+    <div style="margin-top:14px"><button class="tog" id="musicTog">music</button><button class="tog" id="sfxTog">sound</button><button class="tog" id="numTog">numbers</button><button class="tog" id="vibTog">vibration</button><button class="tog" id="shakeTog">shake</button></div>
     <div class="best" id="bestLbl"></div>
     <div id="lightMenu"></div>
     <div id="menuBoard"></div>
@@ -191,7 +191,7 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
     <h2>paused</h2>
     <div class="sub">take a breath. take your time.</div>
     <button class="btn" id="resumeBtn">resume</button>
-    <div style="margin-top:8px"><button class="tog" id="musicTog2">music</button><button class="tog" id="sfxTog2">sound</button><button class="tog" id="numTog2">numbers</button></div>
+    <div style="margin-top:8px"><button class="tog" id="musicTog2">music</button><button class="tog" id="sfxTog2">sound</button><button class="tog" id="numTog2">numbers</button><button class="tog" id="vibTog2">vibration</button><button class="tog" id="shakeTog2">shake</button></div>
     <div id="pauseMet"></div>
     <button class="btn ghost" id="quitBtn">menu</button>
     <div class="foot" id="errNote" hidden style="font-size:11px;word-break:break-word;opacity:.6"></div>
@@ -537,7 +537,7 @@ function newGame(){
   S={state:'play',t:0,wave:1,waveT:0,waveLen:35,level:1,xp:0,xpNeed:6,pending:0,wcd:{},evo:{},collected:0,kills:0,quieted:{},taken:{},comp:[],
     p:{x:0,y:0,r:14,hp:100,maxHp:100,inv:0,vx:0,vy:0,still:0,tier:1,ph:0},
     breath:100,mods:{dmg:1,cd:1,hp:1,extra:0,aoe:1,magnet:1,speed:1,regen:0,breath:1,refill:1,cost:1,pierce:0},
-    enemies:[],shots:[],eshots:[],motes:[],fx:[],rings:[],pickups:[],texts:[],dnums:[],warns:[],lull:0,nextLull:140,roster:makeRoster(),puddles:[],path:[],pathT:0,nextWake:0,slots:[],ink:[],decoy:null,faithT:0,nameT:0,slowT:0,inkT:0,friendT:0,friendCd:0,helpT:32,formT:20,formLast:'',exCd:0,nearD:1e9,aimE:null,aimT:0,
+    enemies:[],shots:[],eshots:[],motes:[],fx:[],rings:[],pickups:[],texts:[],dnums:[],warns:[],firstRun:!boardLoad().length,lull:0,nextLull:140,roster:makeRoster(),puddles:[],path:[],pathT:0,nextWake:0,slots:[],ink:[],decoy:null,faithT:0,nameT:0,slowT:0,inkT:0,friendT:0,friendCd:0,helpT:32,formT:20,formLast:'',exCd:0,nearD:1e9,aimE:null,aimT:0,
     spawnAcc:0,fireT:.4,combo:0,comboT:0,bonusRank:0,boost:0,freeze:0,
     storm:null,stormT:110,shadow:null,shadowT:70,seen:{},met:{},guide:true,guideMoved:0,pickT:14,
     tier:0,endless:false,cam:{x:0,y:0},shake:0,banner:null,note:null,thought:null,
@@ -550,7 +550,7 @@ function spawnEnemy(type){
   const w=S.wave;
   if(!type){const o=[['doubt',1],['anger',w>=2?.42:.22]];
     // today's shadows arrive one per wave from wave 2; the newest is a little more common while it's new
-    S.roster.slice(2).forEach((k,i)=>{const uw=2+i;if(w>=uw)o.push([k,(WEIGHT[k]||.15)*(w-uw<2?1.3:1)])});
+    S.roster.slice(2).forEach((k,i)=>{const uw=2+i+(S.firstRun?1+(i>>1):0);if(w>=uw)o.push([k,(WEIGHT[k]||.15)*(w-uw<2?1.3:1)])});
     if(S.storm){o.length=0;o.push(['doubt',1.4],['fear',.4],['stress',.3],['anger',.4])}
     let tot=o.reduce((s,x)=>s+x[1],0),r=Math.random()*tot;type=o.find(x=>(r-=x[1])<0)[0];
     // breath-takers don't stack: one insomnia at a time, and not while two others already press on your breathing
@@ -568,7 +568,7 @@ function spawnEnemy(type){
   S.enemies.push(e);
   if(!T.hide&&!S.met[type]){S.met[type]=true;const m=metStore();if(!m[type]){m[type]=1;store.set('hush.met',JSON.stringify(m))}
     if(!T.boss)quietNote(T.name,T.line,T.col)}
-  if(T.boss){S.banner={txt:T.name,t:2.6};S.thought={txt:T.line,t:3.5};Sound.play('gong');S.shake=.4}
+  if(T.boss){buzz([80,60,80]);S.banner={txt:T.name,t:2.6};S.thought={txt:T.line,t:3.5};Sound.play('gong');S.shake=.4}
   return e;
 }
 
@@ -611,7 +611,7 @@ function shoot(wpn){
 }
 let NUMS=store.get('hush.nums')!=='0';
 function wakeAll(){let n=0;for(const o of S.enemies)if(o.sleep){o.sleep=false;o.pop=1;n++}if(n){S.texts.push({x:S.p.x,y:S.p.y-80,txt:'the deadline',t:1.6,max:1.6});Sound.play('warn');S.nextWake=0}}
-function exhale(){if(!S||S.state!=='play'||S.guide)return;const P=S.p,bmax=100*S.mods.breath;if(S.exCd>0)return;
+function exhale(){if(!S||S.state!=='play'||S.guide)return;if(S.exCd<=0&&S.breath>=100*S.mods.breath*.4)buzz(25);const P=S.p,bmax=100*S.mods.breath;if(S.exCd>0)return;
   if(S.breath<bmax*.4){S.dryT=.6;S.texts.push({x:P.x,y:P.y-58,txt:'not enough breath',t:1,max:1});return}
   const k=S.breath/100,R=(150+70*Math.min(2,k))*Math.sqrt(S.mods.aoe),dmg=(16+22*k)*power();S.breath=0;S.exCd=.8;P.inv=Math.max(P.inv,.35);
   for(const e of S.enemies){if(e.under>0||e.gone)continue;const T=ET[e.type],dx=e.x-P.x,dy=e.y-P.y,d=Math.hypot(dx,dy)||1;if(d>R+e.r)continue;
@@ -754,7 +754,7 @@ function relief(txt){const P=S.p,R=260;S.joyT=2;
   for(let i=0;i<28;i++){const a=rnd(0,TAU),v=rnd(90,260);S.fx.push({x:P.x,y:P.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:rnd(2,4),col:i%2?GOLD:'#fff3d6',life:.9,max:.9})}
   S.banner={txt,t:1.8};Sound.play('form')}
 function rankCheck(){const want=Math.min(5,RANK_LV.filter((l,i)=>i>0&&S.level>=l).length+S.bonusRank);while(S.p.tier<want)promote()}
-function promote(){const P=S.p;P.tier++;S.joyT=2.5;S.growT=1.2;
+function promote(){const P=S.p;P.tier++;S.joyT=2.5;S.growT=1.2;buzz([30,50,60]);
   {const c=FORM_COL[P.tier];for(let i=0;i<36;i++){const a=rnd(0,TAU),v=rnd(80,260);S.fx.push({x:P.x,y:P.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:rnd(2,5),col:i%3?c[2]:c[0],life:1,max:1})}
    S.rings.push({x:P.x,y:P.y,r:10,R:220,life:1,max:1,col:c[1],w:8});drawGlow&&0}if(P.tier===3)S.thought={txt:'you can hold two helpers now',t:4.5};Sound.play('form');S.banner={txt:'you became '+FORMS[P.tier],t:2.6};
   S.texts.push({x:P.x,y:P.y-60,txt:'new: '+WNAME[WEAPONS[P.tier-1]],t:2.4,max:2.4});
@@ -779,7 +779,12 @@ function showCards(){
   while(chosen.length<3&&pool.length)chosen.push(pool.splice(Math.random()*pool.length|0,1)[0]);
   chosen.forEach((u,i)=>{const b=document.createElement('button');b.className='card';b.id='card'+i;
     const hint=evoHint(u.ic);b.innerHTML='<i>'+(i+1)+'</i><div class="ic" style="background:'+ICON_BG[u.ic]+'">'+iconSVG(u.ic)+'</div><div><strong>'+u.n+(hint&&hint.includes('next one')?' <b style="color:var(--gold)">✦</b>':'')+'</strong><span>'+(u.dd?u.dd():u.d)+hint+'</span></div>';
-    b.onclick=()=>{Sound.play('click');u.f();S.taken[u.ic]=(S.taken[u.ic]||0)+1;pickFx(u);checkEvo();renderKit();S.pending--;S.choosing=false;$('cards').hidden=true;updateHud();if(S.pending>0)setTimeout(()=>{if(S&&S.pending>0&&!S.choosing&&S.state!=='over')showCards()},250)};
+    const choose=()=>{if(b.used||!S||!S.choosing)return;b.used=true;Sound.play('click');buzz(15);u.f();S.taken[u.ic]=(S.taken[u.ic]||0)+1;pickFx(u);checkEvo();renderKit();S.pending--;S.choosing=false;$('cards').hidden=true;updateHud();if(S.pending>0)setTimeout(()=>{if(S&&S.pending>0&&!S.choosing&&S.state!=='over')showCards()},250)};
+    // phones don't send a "click" while another finger is still on the screen (the one moving the wisp),
+    // so a card is picked when the finger touching it lifts off it. mouse and keyboard still use click.
+    b.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse'){b.downId=e.pointerId;e.stopPropagation()}});
+    b.addEventListener('pointerup',e=>{if(e.pointerType!=='mouse'&&e.pointerId===b.downId){e.preventDefault();choose()}});
+    b.onclick=choose;
     list.appendChild(b)});
   $('cards').hidden=false;placeTray();
 }
@@ -886,7 +891,7 @@ function update(dt){
   else if(S.t>=S.nextLull){if(bossAlive()||S.storm||S.shadow)S.nextLull=S.t+15;else{S.lull=13;S.nextLull=S.t+rnd(100,125);S.formT=Math.max(S.formT,S.lull+6);
     S.banner={txt:'a quiet moment',t:2.2};S.thought={txt:pick(THOUGHTS),t:5};Sound.play('bell');for(let i=0;i<3;i++)S.rings.push({x:P.x,y:P.y,r:20,R:260+i*120,life:1.2+i*.3,max:1.2+i*.3,col:'#bfe3f7',w:2});
     if(!S.seen.lull){S.seen.lull=true;quietNote('quiet moments','between the storms there is room to breathe. gather your light, heal a little, get ready.','#bfe3f7')}}}
-  const cap=LITE?170:240,rate=(.66+.42*diff()+.45*clamp(1-S.t/150,0,1))*(S.storm?2.4:1)*(S.shadow?.4:1)*(S.lull>0?.12:1);
+  const cap=LITE?170:240,rate=(.66+.42*diff()+.45*clamp(1-S.t/150,0,1))*(S.storm?2.4:1)*(S.shadow?.4:1)*(S.lull>0?.12:1)*(S.firstRun&&S.t<120?.7:1);
   S.spawnAcc+=dt*rate;while(S.spawnAcc>=1){S.spawnAcc--;if(S.enemies.length<cap)spawnEnemy()}
   // shooting (emptiness nearby dims your light)
   for(const w of unlocked()){if(S.wcd[w]===undefined)S.wcd[w]=rnd(.05,.4);S.wcd[w]-=dt;if(S.wcd[w]<=0)S.wcd[w]=shoot(w)?WPN[w].cd*m.cd*(S.aura.dim?1.65:1):.15}
@@ -909,14 +914,14 @@ function startFormation(){const P=S.p,D=diff(),opts=[['ring',1]];if(S.t>40)opts.
     const pts=[];for(let i=0;i<n;i++){if(i===gap||i===gap+1)continue;const o=(i-(n-1)/2)*sp;pts.push([cx+px*o,cy+py*o])}
     S.warns.push({kind:'dots',pts,t:1.4,max:1.4,col:ET.guilt.col,fn:()=>{for(const [x,y] of pts){const e=spawnEnemy('guilt');e.x=x;e.y=y;e.dash={x:dx,y:dy,s:58};e.dashD=1300}}});
     S.banner={txt:'a wall of it',t:1.6}}}
-function hurt(d){const P=S.p;if(P.inv>0||S.faithT>0)return false;P.inv=.4;P.hp-=d;S.shake=Math.max(S.shake,.25);Sound.play('hurt');
+function hurt(d){const P=S.p;if(P.inv>0||S.faithT>0)return false;P.inv=.4;P.hp-=d;buzz(P.hp<P.maxHp*.3?[40,40,40]:35);S.shake=Math.max(S.shake,.25);Sound.play('hurt');
   S.rings.push({x:P.x,y:P.y,r:P.r,R:P.r*3,life:.3,max:.3,col:'#f08a7a',w:3});return true}
 const TOUCH_WORD={doubt:'are you sure?',anger:'how dare you',guilt:'my fault',fear:'what if',phobia:'get it off',stress:'too much',jealousy:'why them',heartbreak:'it hurts',piece:'it hurts',
   emptiness:'nothing',depression:'what\'s the point',denial:'it\'s fine',nightmare:'wake up',loneliness:'no one',regret:'if only',shame:'don\'t look',burnout:'so tired',perfectionism:'not good enough',
   procrastination:'later',overwhelm:'all at once',insomnia:'can\'t sleep',grief:'i miss it',impostor:'fraud',critic:'you\'ll fail',trauma:'again',panic:'can\'t breathe'};
 const TOUCH_FX={doubt:['q',6],anger:['spike',9],guilt:['link',6],fear:['line',10],phobia:['leg',8],stress:['scrib',6],jealousy:['steal',10],heartbreak:['shard',7],piece:['shard',5],
   emptiness:['void',1],depression:['rain',12],denial:['flash',1],nightmare:['star',8],loneliness:['fade',1],regret:['ripple',3],shame:['blush',6],burnout:['ember',12],perfectionism:['sq',4],
-  procrastination:['z',4],overwhelm:['bubble',8],insomnia:['tick',2],grief:['drop',8],impostor:['confetti',12]};
+  procrastination:['z',4],overwhelm:['bubble',8],insomnia:['tick',2],grief:['drop',8],impostor:['confetti',12],critic:['spike',14],trauma:['ripple',4],panic:['star',16]};
 function touchFx(e){const P=S.p,T=ET[e.type],c=T.col,[kind,n]=TOUCH_FX[e.type]||['spark',8],dx=P.x-e.x,dy=P.y-e.y,l=Math.hypot(dx,dy)||1,ux=dx/l,uy=dy/l;
   const add=o=>S.fx.push(Object.assign({x:P.x,y:P.y,vx:0,vy:0,r:3,col:c,life:.8,max:.8},o));
   if(kind==='void'){S.rings.push({x:P.x,y:P.y,r:P.r*6,R:P.r,life:.5,max:.5,col:'#2a2c38',w:10});S.dark=.5}
@@ -972,10 +977,13 @@ function updateEnemies(dt){
         if(e.under>0){e.under-=dt;skip=true;
           if(e.under<=0){const a=rnd(0,TAU);e.x=P.x+Math.cos(a)*170;e.y=P.y+Math.sin(a)*170;e.rise=1;S.rings.push({x:e.x,y:e.y,r:10,R:e.r*1.8,life:.9,max:.9,col:T.col,w:4})}}
         else if(e.rise>0){e.rise-=dt;e.alpha=1-Math.max(0,e.rise);skip=true}
-        else{e.alpha=1;e.sink-=dt;if(e.sink<=0){e.sink=rnd(5,7);e.under=1.2;e.alpha=0;S.rings.push({x:e.x,y:e.y,r:e.r,R:e.r*.2,life:.6,max:.6,col:T.col,w:4})}}}
-      if(T.boss&&!skip){e.ring-=dt;if(e.ring<=0){e.ring=T.final?2.4:3.4;const n=T.final?14:10,o=rnd(0,TAU);
+        else{e.alpha=1;e.sink-=dt;if(e.sink<=0){e.sink=e.phase2?rnd(3,4.5):rnd(5,7);e.under=1.2;e.alpha=0;S.rings.push({x:e.x,y:e.y,r:e.r,R:e.r*.2,life:.6,max:.6,col:T.col,w:4})}}}
+      if(T.boss&&!e.phase2&&e.hp<e.max*.5){e.phase2=true;e.pop=1;S.shake=.7;buzz([60,40,60]);S.banner={txt:T.name+' gets louder',t:2.2};Sound.play('gong');
+        for(let k=0;k<3;k++)S.rings.push({x:e.x,y:e.y,r:e.r,R:e.r*(3+k),life:.8+k*.15,max:.8+k*.15,col:T.col,w:5-k});if(T.resurface)e.sink=Math.min(e.sink,1)}
+      if(T.boss&&e.phase2)sp*=1.3;
+      if(T.boss&&!skip){e.ring-=dt;if(e.ring<=0){e.ring=(T.final?2.4:3.4)*(e.phase2?.62:1);const n=(T.final?14:10)+(e.phase2?6:0),o=rnd(0,TAU);
           for(let k=0;k<n;k++){const a=o+k/n*TAU;S.eshots.push({x:e.x,y:e.y,vx:Math.cos(a)*140,vy:Math.sin(a)*140,r:6,dmg:e.dmg*.45,life:5,col:T.col})}}
-        if(T.final){e.summon-=dt;if(e.summon<=0){e.summon=6;for(let k=0;k<3;k++){const c=spawnEnemy('doubt');c.x=e.x+rnd(-60,60);c.y=e.y+rnd(-60,60)}}}}
+        if(T.final){e.summon-=dt;if(e.summon<=0){e.summon=e.phase2?3.5:6;for(let k=0;k<3;k++){const c=spawnEnemy('doubt');c.x=e.x+rnd(-60,60);c.y=e.y+rnd(-60,60)}}}}
       if(!skip){const tk=S.slowT>0?.33:1;e.x+=(mx*sp+e.kx)*dt*tk;e.y+=(my*sp+e.ky)*dt*tk;
         for(let j=1;j<=3;j++){const o=E[(i+j)%E.length];if(o===e)continue;const ox=e.x-o.x,oy=e.y-o.y,mn=e.r+o.r;const q=ox*ox+oy*oy;
           if(q<mn*mn&&q>0){const ql=Math.sqrt(q),push=(mn-ql)*.5;e.x+=ox/ql*push;e.y+=oy/ql*push;o.x-=ox/ql*push;o.y-=oy/ql*push}}}
@@ -1342,7 +1350,7 @@ const SMALL=()=>W<640;
 function render(){
   ctx.setTransform(DPR,0,0,DPR,0,0);ctx.globalAlpha=1;
   if(!S){drawMenuScene();return}
-  const sh=S.shake*10,cx=S.cam.x-VW/2+rnd(-sh,sh),cy=S.cam.y-VH/2+rnd(-sh,sh);
+  const sh=SHAKE?S.shake*10:0,cx=S.cam.x-VW/2+rnd(-sh,sh),cy=S.cam.y-VH/2+rnd(-sh,sh);
   ctx.setTransform(DPR*Z,0,0,DPR*Z,0,0);
   drawBackground(S.bgNow,cx,cy,VW,VH);
   ctx.save();ctx.translate(-cx,-cy);
@@ -1394,6 +1402,7 @@ function render(){
   if(S.inhaleT>0&&S.calm<.6&&S.dryT<=0&&!S.guide){ctx.globalAlpha=.75;ctx.fillStyle='#8ec9ee';ctx.font='600 '+Math.round(13/Z)+'px '+FONT;ctx.fillText('too close to breathe',P.x,P.y-44);ctx.globalAlpha=1}
   if(S.dryT>0&&!S.guide){ctx.globalAlpha=.6+.4*Math.sin(S.t*8);ctx.fillStyle='#8ec9ee';ctx.font='700 '+Math.round(15/Z)+'px '+FONT;ctx.fillText('be still · breathe',P.x,P.y-44);ctx.globalAlpha=1}
   ctx.restore();ctx.setTransform(DPR,0,0,DPR,0,0);
+  {const pb=S.enemies.find(e=>e.phase2&&ET[e.type].final);if(pb&&!pb.under){const k=.1+.08*Math.sin(S.t*7);const g=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.35,W/2,H/2,Math.max(W,H)*.75);g.addColorStop(0,'rgba(255,93,122,0)');g.addColorStop(1,'rgba(255,93,122,'+k+')');ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}}
   if(S.dark>0){ctx.fillStyle='rgba(0,0,0,'+(S.dark*.5)+')';ctx.fillRect(0,0,W,H)}
   if(S.lonelyT>0){const g=ctx.createRadialGradient(W/2,H/2,40,W/2,H/2,Math.max(W,H)*.6);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(10,12,20,'+(S.lonelyT*.45)+')');ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}
   if(S.slowT>0){ctx.fillStyle='rgba(110,150,210,'+(.12*Math.min(1,S.slowT))+')';ctx.fillRect(0,0,W,H)}
@@ -1512,7 +1521,15 @@ function renderPauseMet(){const box=$('pauseMet'),extra=MET_KEYS.filter(k=>S.met
   const show=k=>{box.querySelector('.pml').textContent=ET[k].line+(S.quieted[k]?' · quieted '+S.quieted[k]:'');box.querySelectorAll('.pmc button').forEach(b=>b.classList.toggle('on',b.dataset.k===k))};
   box.querySelectorAll('.pmc button[data-k]').forEach(b=>b.onclick=()=>{Sound.play('click');show(b.dataset.k)});show(ks[ks.length-1])}
 function togglePause(){if(!S)return;if(S.state==='play')renderPauseMet();{const le=store.get('hush.lastErr');$('errNote').hidden=!le;if(le)$('errNote').textContent='last hiccup: '+le}if(S.state==='play'){S.state='paused';$('pause').hidden=false}else if(S.state==='paused'){S.state='play';$('pause').hidden=true;last=performance.now()}Sound.setPaused(S.state==='paused')}
+
+/* ---------------- feel settings: vibration and screen shake ---------------- */
+let VIB=store.get('hush.vib')!=='0',SHAKE=store.get('hush.shake')!=='0';
+const buzz=p=>{if(!VIB||!navigator.vibrate)return;try{navigator.vibrate(p)}catch(e){}};
+function feelToggles(){for(const id of ['vibTog','vibTog2'])$(id).classList.toggle('off',!VIB);for(const id of ['shakeTog','shakeTog2'])$(id).classList.toggle('off',!SHAKE)}
 function syncToggles(){for(const id of ['numTog','numTog2'])$(id).classList.toggle('off',!NUMS);for(const [k,ids] of [['music',['musicTog','musicTog2']],['sfx',['sfxTog','sfxTog2']]])for(const id of ids)$(id).classList.toggle('off',!Sound.opts[k])}
+for(const id of ['vibTog','vibTog2'])$(id).onclick=()=>{VIB=!VIB;store.set('hush.vib',VIB?'1':'0');feelToggles();buzz(30)};
+for(const id of ['shakeTog','shakeTog2'])$(id).onclick=()=>{SHAKE=!SHAKE;store.set('hush.shake',SHAKE?'1':'0');feelToggles()};
+feelToggles();
 $('playBtn').onclick=start;$('contBtn').onclick=askContinue;$('againBtn').onclick=start;$('menuBtn').onclick=toMenu;$('quitBtn').onclick=toMenu;
 $('keepBtn').onclick=()=>{if(!S||S.state!=='won')return;S.endless=true;S.state='play';$('over').hidden=true;$('keepBtn').hidden=true;
   S.banner={txt:'they come back',t:2.4};S.thought={txt:'healing isn\'t a straight line',t:4};last=performance.now()};
