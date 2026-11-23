@@ -159,6 +159,7 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
     <div class="met" id="metLbl"></div>
     <div class="chips" id="metChips"></div>
     <div class="foot">this is a game about feelings. if yours are heavy right now, talking to someone you trust can really help.</div>
+    <div style="margin-top:10px;font-size:12.5px"><a href="https://silverman91.github.io/hush/privacy.html" target="_blank" rel="noopener" style="color:var(--muted)">privacy policy</a></div>
   </div>
 </div>
 
@@ -196,6 +197,8 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
     <div class="stats"><div><b id="oTime">0:00</b>lasted</div><div><b id="oLvl">1</b>level</div><div><b id="oKills">0</b>quieted</div></div>
     <div class="most" id="oMost"></div>
     <div id="overBoard"></div>
+<button class="btn" id="contBtn" hidden>watch an ad to continue<small style="display:block;font-size:12px;font-weight:600;opacity:.65">once per run</small></button>
+    <div class="sub" id="contMsg" style="margin:4px 0;font-size:14px;min-height:0"></div>
     <button class="btn" id="keepBtn" hidden>keep going</button>
     <button class="btn" id="againBtn">again</button>
     <button class="btn ghost" id="menuBtn">menu</button>
@@ -1394,6 +1397,21 @@ function drawMenuScene(){
   drawGlow('#ffcf7a',W/2,H/2,160+Math.sin(t*1.5)*12,.25);drawVignette();
 }
 
+
+/* ---------------- rewarded ads (only when the app was built with ads, or ?ads=test in a browser) ---------------- */
+const Ads={mode(){return window.GameAds?'android':/[?&]ads=test\b/.test(location.search)?'test':'none'},
+  on(){return this.mode()!=='none'},
+  preload(){try{if(window.GameAds)GameAds.preload()}catch(e){}},
+  show(cb){const m=this.mode();
+    if(m==='android'){let done=false;const h=e=>{if(done)return;done=true;removeEventListener('gameads',h);cb(e.detail)};addEventListener('gameads',h);try{GameAds.showRewarded()}catch(e){h({detail:'unavailable'})}}
+    else if(m==='test')testAd(cb);else cb('unavailable')}};
+function testAd(cb){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;z-index:50;background:#000;color:#fff;display:grid;place-items:center;font:600 18px Quicksand,system-ui,sans-serif;text-align:center;padding:20px';let n=5;
+  d.innerHTML='<div><div style="opacity:.55;font-size:13px;letter-spacing:.08em">TEST AD</div><div class="taN" style="font-size:48px;margin:10px 0">5</div><div>a real ad would play here</div><button class="taX" style="margin-top:24px;font:inherit;font-size:14px;background:none;color:#aaa;border:1px solid #555;border-radius:99px;padding:8px 18px;cursor:pointer">close early</button></div>';
+  document.body.appendChild(d);const iv=setInterval(()=>{n--;d.querySelector('.taN').textContent=n;if(n<=0){clearInterval(iv);d.remove();cb('rewarded')}},1000);
+  d.querySelector('.taX').onclick=()=>{clearInterval(iv);d.remove();cb('closed')}}
+const CONT_MSG={closed:'the ad was closed early, so no continue this time',unavailable:'no ad is ready right now. try again in a moment'};
+function askContinue(){const b=$('contBtn');b.disabled=true;$('contMsg').textContent='';
+  Ads.show(r=>{b.disabled=false;if(r==='rewarded'){b.hidden=true;revive()}else $('contMsg').textContent=CONT_MSG[r]||CONT_MSG.unavailable})}
 /* ---------------- hud, flow ---------------- */
 function updateHud(){
   if(!S)return;{const k=clamp(S.breath/(100*S.mods.breath),0,1),b=$('exBtn');b.style.setProperty('--p',(k*100).toFixed(1)+'%');b.style.setProperty('--c',k>=.4?'#8ec9ee':'#4a6a86');b.classList.toggle('ready',k>=.4&&S.exCd<=0)}
@@ -1420,14 +1438,16 @@ function recordRun(won){if(!S.runId)S.runId=Date.now()+'-'+Math.random().toStrin
 const fmtTime=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
 function mostQuieted(){const arr=Object.entries(S.quieted).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4);
   return arr.length?'you quieted '+arr.map(([k,v])=>v+' '+ET[k].name).join(' · '):''}
-function start(){Sound.init();newGame();for(const id of ['menu','over','pause','cards','explain'])$(id).hidden=true;$('keepBtn').hidden=true;$('hud').hidden=false;last=performance.now();updateHud();renderKit();renderSkills()}
+function start(){Sound.init();newGame();Ads.preload();for(const id of ['menu','over','pause','cards','explain'])$(id).hidden=true;$('keepBtn').hidden=true;$('hud').hidden=false;last=performance.now();updateHud();renderKit();renderSkills()}
 function showOver(title,line){$('oTitle').textContent=title;$('oLine').textContent=line;$('oTime').textContent=fmtTime(S.t);$('oLvl').textContent=S.level;$('oKills').textContent=S.kills;$('oMost').textContent=mostQuieted()}
-function gameOver(){if(S.state==='over')return;S.state='over';S.choosing=false;$('cards').hidden=true;$('keepBtn').hidden=true;Sound.play('lose');Sound.setMode('menu',0);
+function revive(){const P=S.p;S.continued=true;P.hp=P.maxHp*.5;S.state='play';$('over').hidden=true;S.shadow=null;
+  relief('one more breath');P.inv=2.5;S.breath=100*S.mods.breath;Sound.setMode('battle',2);last=performance.now()}
+function gameOver(){if(S.state==='over')return;S.state='over';$('contBtn').hidden=!(Ads.on()&&!S.continued);$('contMsg').textContent='';S.choosing=false;$('cards').hidden=true;$('keepBtn').hidden=true;Sound.play('lose');Sound.setMode('menu',0);
   const prev=+(store.get('hush.longest')||0);if(S.t>prev)store.set('hush.longest',Math.floor(S.t));
   showOver(pick(OVER_TITLES),'you grew into '+FORMS[S.p.tier]+'. it got '+TIERS[tierIdx()]+'.');recordRun(false);
   setTimeout(()=>{$('over').hidden=false},800)}
 function win(){if(!S||S.state==='over'||S.state==='won')return;if(S.state!=='play'){setTimeout(win,500);return}
-  S.state='won';Sound.play('win');Sound.setMode('menu',0);store.set('hush.won','1');if(S.t>+(store.get('hush.longest')||0))store.set('hush.longest',Math.floor(S.t));
+  S.state='won';$('contBtn').hidden=true;Sound.play('win');Sound.setMode('menu',0);store.set('hush.won','1');if(S.t>+(store.get('hush.longest')||0))store.set('hush.longest',Math.floor(S.t));
   showOver('quiet, at last','you didn\'t make them disappear. you learned to hold them.');recordRun(true);$('keepBtn').hidden=false;$('over').hidden=false}
 function toMenu(){S=null;Sound.setMode('menu',0);Sound.setPaused(false);for(const id of ['over','pause','cards','explain','hud','kit'])$(id).hidden=true;$('menu').hidden=false;menuInfo()}
 function menuInfo(){$('menuBoard').innerHTML=boardHTML(boardLoad(),null,5);const b=+(store.get('hush.longest')||0);$('bestLbl').textContent=b?'longest: '+fmtTime(b)+(store.get('hush.won')?' · you quieted panic':''):'';
@@ -1441,7 +1461,7 @@ function renderPauseMet(){const box=$('pauseMet'),extra=MET_KEYS.filter(k=>S.met
   box.querySelectorAll('.pmc button[data-k]').forEach(b=>b.onclick=()=>{Sound.play('click');show(b.dataset.k)});show(ks[ks.length-1])}
 function togglePause(){if(!S)return;if(S.state==='play')renderPauseMet();{const le=store.get('hush.lastErr');$('errNote').hidden=!le;if(le)$('errNote').textContent='last hiccup: '+le}if(S.state==='play'){S.state='paused';$('pause').hidden=false}else if(S.state==='paused'){S.state='play';$('pause').hidden=true;last=performance.now()}Sound.setPaused(S.state==='paused')}
 function syncToggles(){for(const id of ['numTog','numTog2'])$(id).classList.toggle('off',!NUMS);for(const [k,ids] of [['music',['musicTog','musicTog2']],['sfx',['sfxTog','sfxTog2']]])for(const id of ids)$(id).classList.toggle('off',!Sound.opts[k])}
-$('playBtn').onclick=start;$('againBtn').onclick=start;$('menuBtn').onclick=toMenu;$('quitBtn').onclick=toMenu;
+$('playBtn').onclick=start;$('contBtn').onclick=askContinue;$('againBtn').onclick=start;$('menuBtn').onclick=toMenu;$('quitBtn').onclick=toMenu;
 $('keepBtn').onclick=()=>{if(!S||S.state!=='won')return;S.endless=true;S.state='play';$('over').hidden=true;$('keepBtn').hidden=true;
   S.banner={txt:'they come back',t:2.4};S.thought={txt:'healing isn\'t a straight line',t:4};last=performance.now()};
 $('resumeBtn').onclick=togglePause;$('pauseBtn').onclick=togglePause;
