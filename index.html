@@ -234,30 +234,67 @@ const hexA=(h,a)=>'rgba('+hexRgb(h).join(',')+','+a+')';
 const mixHex=(a,b,k)=>{const x=hexRgb(a),y=hexRgb(b);return 'rgb('+x.map((v,i)=>Math.round(v+(y[i]-v)*k)).join(',')+')'};
 
 /* ---------------- sound: lo-fi night soundtrack + soft effects (Web Audio, no files) ---------------- */
+/*@MUSIC*/
+const MUSIC_GAME='hush';
+// Hush's music: slow, warm lofi. One entry per song; see README.md for what each field does.
+// mel / mel2: [step 0..63 over 4 bars, scale degree] (degree 0 = the key, 5 = the key an octave up)
+window.MUSIC_TRACKS=window.MUSIC_TRACKS||{};
+window.MUSIC_TRACKS.hush={
+  storeKey:'hush.sound',
+  songs:[
+    {name:'3 a.m.',bpm:74,key:57,scale:'min',prog:[[0,'min7'],[5,'dom'],[3,'maj7'],[10,'dom']],drums:'lofi',keys:'epiano',lead:'kalimba',
+      mel:[[0,7],[3,9],[6,8],[10,7],[16,5],[22,6],[28,7],[32,9],[35,10],[38,9],[42,7],[48,8],[54,7],[58,5]]},
+    {name:'unsent letters',bpm:78,key:60,scale:'maj',prog:[[5,'maj7'],[4,'min7'],[2,'min7'],[0,'maj7']],drums:'brush',keys:'epiano',lead:'bell',
+      mel:[[0,9],[4,8],[6,7],[12,5],[16,7],[20,8],[24,9],[30,11],[32,10],[38,9],[44,7],[48,8],[52,7],[56,5]],
+      mel2:[[0,4],[8,5],[16,6],[24,7],[32,6],[40,5],[48,4],[56,2]],lead2:'flute'},
+    {name:'rain on the window',bpm:72,key:55,scale:'min',prog:[[0,'min7'],[8,'maj7'],[5,'min9'],[7,'sus']],drums:'lofi',keys:'warm',lead:'kalimba',
+      mel:[[0,5],[2,7],[6,8],[8,7],[16,10],[22,9],[24,8],[32,5],[34,7],[38,8],[40,10],[48,9],[54,8],[60,7]],
+      mel2:[[4,2],[12,3],[20,4],[28,3],[36,2],[44,4],[52,5],[60,4]],lead2:'flute'},
+    {name:'small hours',bpm:80,key:62,scale:'maj',prog:[[0,'maj7'],[9,'min7'],[7,'add9'],[4,'min7']],drums:'brush',keys:'epiano',lead:'glass',
+      mel:[[0,10],[6,9],[8,7],[16,8],[20,7],[24,5],[32,7],[36,8],[40,9],[44,10],[48,12],[54,11],[56,10]]},
+    {name:'tea gone cold',bpm:76,key:58,scale:'maj',prog:[[0,'maj7'],[5,'maj7'],[9,'min7'],[4,'min7']],drums:'lofi',keys:'warm',lead:'pluck',
+      mel:[[0,7],[4,9],[8,10],[14,9],[16,7],[24,5],[32,8],[36,9],[40,7],[48,6],[52,7],[58,9]],
+      mel2:[[0,2],[16,4],[32,3],[48,2]],lead2:'glass'},
+    {name:'the long way home',bpm:70,key:53,scale:'min',prog:[[0,'min7'],[3,'maj7'],[10,'dom'],[8,'maj7']],drums:'brush',bass:'long',keys:'organ',lead:'flute',
+      mel:[[0,5],[6,7],[10,8],[16,7],[22,5],[28,4],[32,5],[38,8],[42,9],[48,10],[54,9],[60,7]]},
+    // new
+    {name:'paper boats',bpm:68,key:52,scale:'maj',prog:[[0,'maj7'],[7,'sus'],[9,'min7'],[5,'add9']],drums:'brush',keys:'epiano',lead:'bell',swing:.1,
+      mel:[[0,7],[4,9],[8,10],[12,9],[16,7],[22,5],[24,6],[32,7],[36,9],[40,11],[44,10],[48,9],[54,7],[58,6]],
+      mel2:[[0,2],[12,4],[24,3],[36,5],[48,4]],lead2:'flute'},
+    {name:'night bus',bpm:84,key:50,scale:'min',prog:[[0,'min9'],[10,'dom'],[8,'maj7'],[7,'min7']],drums:'lofi',keys:'warm',lead:'pluck',
+      mel:[[0,5],[2,6],[4,7],[8,5],[12,4],[16,5],[20,7],[24,8],[28,7],[32,10],[34,9],[36,8],[40,7],[48,5],[52,6],[56,7]],
+      mel2:[[0,3],[8,4],[16,5],[24,4],[32,3],[40,2],[48,3],[56,4]],lead2:'glass'},
+    {name:'kept promises',bpm:74,key:56,scale:'maj',prog:[[0,'add9'],[5,'maj7'],[7,'sus'],[9,'min7']],drums:'brush',keys:'organ',lead:'kalimba',
+      mel:[[0,5],[3,7],[6,9],[10,10],[16,9],[20,7],[24,5],[30,7],[32,9],[36,10],[40,12],[44,10],[48,9],[52,7],[56,9],[60,7]]},
+  ],
+  menu:{name:'hush',bpm:64,key:57,scale:'min',prog:[[0,'min7'],[5,'maj7'],[3,'maj7'],[7,'sus']],drums:'none',keys:'warm',lead:'glass'},
+  events:{
+    storm:{name:'overthinking',bpm:92,key:57,scale:'min',prog:[[0,'min7'],[8,'maj7'],[3,'maj7'],[10,'dom']],drums:'busy',keys:'epiano',lead:'pluck',I:3},
+    shadow:{name:'racing',bpm:70,key:50,scale:'min',prog:[[0,'min7'],[1,'maj7']],drums:'heart',keys:'organ',lead:'kalimba',I:2},
+    boss:{name:'face it',bpm:84,key:52,scale:'min',prog:[[0,'min7'],[5,'min7'],[8,'maj7'],[7,'dom']],drums:'full',keys:'warm',lead:'bell',I:3},
+  },
+};
+
+// ============================================================================================
+// Shared music + sound engine for Hush and Drift (procedural Web Audio, nothing to download).
+// The songs themselves live in hush-tracks.js / drift-tracks.js. A game's build step pastes
+// "<game>-tracks.js + engine.js" into the game's index.html, and sets MUSIC_GAME first.
+// Needs from the page: LITE, store, rnd, clamp (and optionally reportErr).
+// ============================================================================================
 const Sound=(()=>{
+  const MUSIC=window.MUSIC_TRACKS[MUSIC_GAME];
   let mTone=null,mDuck=null;const pres={},presWant={};
-  let ac=null,musicG,sfxG,verbM,verbS,delay,noiseBuf,nextT=0,step=0,live=0;
+  let ac=null,musicG,sfxG,verbM,verbS,delay,noiseBuf,nextT=0,step=0,live=0,forced=null;
   const CAP=LITE?28:90,SOFT=LITE?17:60;
   let opts={music:true,sfx:true};
-  try{const o=JSON.parse(store.get('hush.sound')||'null');if(o)opts=Object.assign(opts,o)}catch(e){}
+  try{const o=JSON.parse(store.get(MUSIC.storeKey)||'null');if(o)opts=Object.assign(opts,o)}catch(e){}
   const mf=m=>440*Math.pow(2,(m-69)/12);
-  const CH={maj7:[0,4,7,11,14],min7:[0,3,7,10,14],dom:[0,4,7,10,14],sus:[0,5,7,10,14]};
+  const CH={maj7:[0,4,7,11,14],min7:[0,3,7,10,14],dom:[0,4,7,10,14],sus:[0,5,7,10,14],add9:[0,4,7,14,16],min9:[0,3,7,10,14]};
   const PENT_MAJ=[0,2,4,7,9],PENT_MIN=[0,3,5,7,10];
-  const SONGS=[
-    {name:'3 a.m.',bpm:74,key:57,prog:[[0,'min7'],[5,'dom'],[3,'maj7'],[10,'dom']],scale:PENT_MIN,drums:'lofi',mel:[[0,7],[3,9],[6,8],[10,7],[16,5],[22,6],[28,7],[32,9],[35,10],[38,9],[42,7],[48,8],[54,7],[58,5]]},
-    {name:'unsent letters',bpm:78,key:60,prog:[[5,'maj7'],[4,'min7'],[2,'min7'],[0,'maj7']],scale:PENT_MAJ,drums:'lofi',mel:[[0,9],[4,8],[6,7],[12,5],[16,7],[20,8],[24,9],[30,11],[32,10],[38,9],[44,7],[48,8],[52,7],[56,5]]},
-    {name:'rain on the window',bpm:72,key:55,prog:[[0,'min7'],[8,'maj7'],[5,'min7'],[7,'sus']],scale:PENT_MIN,drums:'lofi',mel:[[0,5],[2,7],[6,8],[8,7],[16,10],[22,9],[24,8],[32,5],[34,7],[38,8],[40,10],[48,9],[54,8],[60,7]]},
-    {name:'small hours',bpm:80,key:62,prog:[[0,'maj7'],[9,'min7'],[7,'maj7'],[4,'min7']],scale:PENT_MAJ,drums:'lofi',mel:[[0,10],[6,9],[8,7],[16,8],[20,7],[24,5],[32,7],[36,8],[40,9],[44,10],[48,12],[54,11],[56,10]]},
-    {name:'tea gone cold',bpm:76,key:58,prog:[[0,'maj7'],[5,'maj7'],[9,'min7'],[4,'min7']],scale:PENT_MAJ,drums:'lofi',mel:[[0,7],[4,9],[8,10],[14,9],[16,7],[24,5],[32,8],[36,9],[40,7],[48,6],[52,7],[58,9]]},
-    {name:'the long way home',bpm:70,key:53,prog:[[0,'min7'],[3,'maj7'],[10,'dom'],[8,'maj7']],scale:PENT_MIN,drums:'lofi',mel:[[0,5],[6,7],[10,8],[16,7],[22,5],[28,4],[32,5],[38,8],[42,9],[48,10],[54,9],[60,7]]},
-  ];
-  const MENU_SONG={name:'hush',bpm:64,key:57,prog:[[0,'min7'],[5,'maj7'],[3,'maj7'],[7,'sus']],scale:PENT_MIN,drums:'none'};
-  const EV={
-    storm:{name:'overthinking',bpm:92,key:57,prog:[[0,'min7'],[8,'maj7'],[3,'maj7'],[10,'dom']],scale:PENT_MIN,drums:'busy',I:3},
-    shadow:{name:'racing',bpm:70,key:50,prog:[[0,'min7'],[1,'maj7']],scale:PENT_MIN,drums:'heart',I:2},
-    boss:{name:'face it',bpm:84,key:52,prog:[[0,'min7'],[5,'min7'],[8,'maj7'],[7,'dom']],scale:PENT_MIN,drums:'full',I:3},
-  };
-  let song=MENU_SONG,songIdx=0,songStart=0,SIX=60/song.bpm/4,mode='menu',wantMode='menu',inten=0,want=0,melDeg=7;
+  const scaleOf=s=>s==='maj'?PENT_MAJ:PENT_MIN;
+  const SONGS=MUSIC.songs.map(s=>Object.assign({},s,{scale:scaleOf(s.scale)})),MENU_SONG=Object.assign({},MUSIC.menu,{scale:scaleOf(MUSIC.menu.scale)});
+  const EV={};for(const k in (MUSIC.events||{}))EV[k]=Object.assign({},MUSIC.events[k],{scale:scaleOf(MUSIC.events[k].scale)});
+  let song=MENU_SONG,songIdx=Math.random()*SONGS.length|0,songStart=0,SIX=60/song.bpm/4,mode='menu',wantMode='menu',inten=0,want=0,melDeg=7;
   function impulse(sec,decay){const nc=LITE?1:2,len=ac.sampleRate*sec|0,b=ac.createBuffer(nc,len,ac.sampleRate);
     for(let c=0;c<nc;c++){const d=b.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay)}return b}
   function init(){
@@ -303,15 +340,32 @@ const Sound=(()=>{
     const g=ac.createGain();g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(o.gain,t+a);g.gain.exponentialRampToValueAtTime(.0001,end);
     s.connect(f);f.connect(g);route(g,o);s.onended=()=>{live--;g.disconnect()};s.start(t,Math.random()*.5);s.stop(end+.05);
   }
-  const keys=(t,m,dur,v)=>{voice({type:'sine',f:mf(m),t,a:.02,dur,gain:.045*v,verb:.55,pan:rnd(-.3,.3)});
-    if(!LITE)voice({type:'triangle',f:mf(m),det:7,t,a:.02,dur:dur*.7,gain:.016*v,lp:1100,verb:.45})};
-  const kalimba=(t,m,v,bus)=>{voice({type:'sine',f:mf(m),t,a:.002,dur:1.2,gain:.075*v,verb:.4,dly:.38,bus,pan:rnd(-.4,.4)});
-    voice({type:'sine',f:mf(m)*3.01,t,a:.001,dur:.12,gain:.016*v,bus})};
+  // ---------------- instruments ----------------
+  // chord voices
+  const KEYS={
+    epiano:(t,m,dur,v)=>{voice({type:'sine',f:mf(m),t,a:.02,dur,gain:.045*v,verb:.55,pan:rnd(-.3,.3)});if(!LITE)voice({type:'triangle',f:mf(m),det:7,t,a:.02,dur:dur*.7,gain:.016*v,lp:1100,verb:.45})},
+    warm:(t,m,dur,v)=>{voice({type:'triangle',f:mf(m),t,a:.06,dur,gain:.03*v,lp:900,verb:.5,pan:rnd(-.3,.3)});if(!LITE)voice({type:'sine',f:mf(m),det:-6,t,a:.08,dur:dur*.8,gain:.022*v,verb:.5})},
+    organ:(t,m,dur,v)=>{voice({type:'sine',f:mf(m),t,a:.12,hold:dur*.3,dur:dur*.6,gain:.03*v,verb:.6,pan:rnd(-.3,.3)});if(!LITE)voice({type:'sine',f:mf(m)*2,t,a:.12,hold:dur*.2,dur:dur*.5,gain:.01*v,verb:.6})},
+  };
+  // lead voices
+  const LEAD={
+    kalimba:(t,m,v,bus)=>{voice({type:'sine',f:mf(m),t,a:.002,dur:1.2,gain:.075*v,verb:.4,dly:.38,bus,pan:rnd(-.4,.4)});voice({type:'sine',f:mf(m)*3.01,t,a:.001,dur:.12,gain:.016*v,bus})},
+    bell:(t,m,v,bus)=>{voice({type:'sine',f:mf(m),t,a:.004,dur:2,gain:.06*v,verb:.6,dly:.3,bus,pan:rnd(-.3,.3)});voice({type:'sine',f:mf(m)*2.76,t,a:.002,dur:.5,gain:.014*v,verb:.5,bus})},
+    pluck:(t,m,v,bus)=>{voice({type:'triangle',f:mf(m),t,a:.003,dur:.45,gain:.07*v,lp:2400,verb:.35,dly:.3,bus,pan:rnd(-.35,.35)});if(!LITE)voice({type:'sine',f:mf(m+12),t,a:.002,dur:.18,gain:.018*v,bus})},
+    flute:(t,m,v,bus)=>{voice({type:'sine',f:mf(m),t,a:.07,hold:.18,dur:.55,gain:.05*v,verb:.55,dly:.25,bus,pan:rnd(-.2,.2)});if(!LITE)voice({type:'sine',f:mf(m),det:9,t,a:.09,hold:.15,dur:.5,gain:.016*v,verb:.5,bus})},
+    glass:(t,m,v,bus)=>{voice({type:'sine',f:mf(m+12),t,a:.01,dur:1.6,gain:.04*v,verb:.75,dly:.35,bus,pan:rnd(-.4,.4)});voice({type:'sine',f:mf(m+12)*2,t,a:.01,dur:.6,gain:.01*v,verb:.6,bus})},
+  };
+  const kalimba=LEAD.kalimba;
+  const lead=(name,t,m,v)=>(LEAD[name]||LEAD.kalimba)(t,m,v);
+  const keys=(t,m,dur,v)=>(KEYS[song.keys]||KEYS.epiano)(t,m,dur,v);
   const bass=(t,m,dur,v)=>voice({type:'sine',f:mf(m),t,a:.01,dur,gain:.13*v,lp:380});
   const pad=(t,m,dur)=>voice({type:'sine',f:mf(m),t,a:1.4,hold:dur*.4,dur:dur*.6,gain:.04,verb:.65});
   const kick=(t,v)=>voice({type:'sine',f:115,f2:44,glide:.12,t,a:.002,dur:.32,gain:.4*v});
   const snare=(t,v)=>noise({t,dur:.18,gain:.08*v,f:1700,q:.6,verb:.3});
+  const brush=(t,v)=>noise({t,a:.02,dur:.22,gain:.035*v,f:2600,q:.4,verb:.25});
+  const clap=(t,v)=>{noise({t,dur:.12,gain:.06*v,f:1400,q:.9,verb:.35});noise({t:t+.012,dur:.1,gain:.04*v,f:1600,q:.9})};
   const hat=(t,v)=>noise({t,dur:.035,gain:.03*v,ft:'highpass',f:7000});
+  const ohat=(t,v)=>noise({t,dur:.16,gain:.022*v,ft:'highpass',f:7500});
   const crackle=t=>noise({t,dur:.006,gain:rnd(.008,.022),ft:'highpass',f:2500});
   const rain=t=>noise({t,a:.4,dur:1.2,gain:.012,ft:'highpass',f:4000,q:.3});
   // ---- the strings: each shadow on screen quietly adds its own voice, in key, on the beat
@@ -350,39 +404,55 @@ const Sound=(()=>{
   function tick0(){
     if(!ac||ac.state!=='running')return;
     if(nextT<ac.currentTime-.3)nextT=ac.currentTime+.05;
-    while(nextT<ac.currentTime+(LITE?.45:.25)){const swing=(step%2===1)?SIX*.16:0;playStep(step,nextT+swing);nextT+=SIX;step++}
+    while(nextT<ac.currentTime+(LITE?.45:.25)){const swing=(step%2===1)?SIX*(song.swing==null?.16:song.swing):0;playStep(step,nextT+swing);nextT+=SIX;step++}
   }
+  const deg=(sg,d,oct)=>sg.key+12*(oct||1)+Math.floor(d/5)*12+sg.scale[((d%5)+5)%5];
   function playStep(st,t){
     const s=st%16,bar=Math.floor(st/16);
     if(s===0){mode=wantMode;inten=want;
       if(mode==='menu')setSong(MENU_SONG,bar);
       else if(EV[mode])setSong(EV[mode],bar);
+      else if(forced!=null&&SONGS[forced]!==song){songIdx=forced;setSong(SONGS[forced],bar)}
       else if(!SONGS.includes(song))setSong(SONGS[songIdx],bar);
-      else if(bar-songStart>=64){songIdx=(songIdx+1)%SONGS.length;setSong(SONGS[songIdx],bar)}}
+      else if(forced==null&&bar-songStart>=(song.bars||64)){songIdx=(songIdx+1)%SONGS.length;setSong(SONGS[songIdx],bar)}}
     if(!opts.music)return;
-    const I=mode==='menu'?0:EV[mode]?EV[mode].I:inten,rel=bar-songStart,ci=Math.floor(rel/2)%song.prog.length;
-    const [ro,q]=song.prog[ci],root=song.key+ro,tones=CH[q],barLen=SIX*16;
-    const brk=mode==='battle'&&(rel%32)>=28;
+    const rel=bar-songStart,len=song.bars||64,intro=mode==='battle'&&rel<2,outro=mode==='battle'&&forced==null&&rel>=len-2;
+    const I=mode==='menu'?0:EV[mode]?EV[mode].I:(intro||outro?Math.min(inten,1):inten),ci=Math.floor(rel/2)%song.prog.length;
+    const [ro,q]=song.prog[ci],root=song.key+ro,tones=CH[q]||CH.maj7,barLen=SIX*16;
+    const brk=mode==='battle'&&(rel%32)>=28,B=(rel%32)>=16;
+    // chords and pad, voiced close so they move smoothly
     if(s===0&&rel%2===0){pad(t,root-24,barLen*2);const vc=(LITE?tones.slice(0,4):tones).map(iv=>{let m=root+iv;while(m<55)m+=12;while(m>70)m-=12;return m});vc.forEach((m,i)=>keys(t+i*.012+rnd(0,.02),m,barLen*1.6,i?.9:1))}
     if(I>=1&&!brk&&(s===6||(s===14&&rel%2===1)))for(const iv of tones.slice(1,4))keys(t,root+12+iv,.8,.5);
+    // arpeggio (driving songs)
+    if(song.arp&&I>=2&&!brk&&s%2===0&&live<SOFT){const ar=[0,1,2,3,2,1,0,2],iv=tones[ar[(s>>1)%8]%tones.length];voice({type:'triangle',f:mf(root+12+iv),t,a:.004,dur:SIX*1.6,gain:(s%4===0?.026:.018),lp:2000,verb:.3,pan:(s%4===0?-.25:.25)})}
+    // melody: the song's written phrase, lifted in the second half with a soft echo; an optional counter-melody joins in B
     if(I>=1&&mode!=='shadow'&&s%2===0){const pr=I>=3?.4:I>=2?.3:.2;
-      if(song.mel&&live<SOFT){const ph=(rel%4)*16+s,B=(rel%32)>=16,nt=song.mel.find(x=>x[0]===ph);
-        if(nt&&Math.random()<(I>=2?.92:.7)){const d=nt[1]+(B&&rel%8>=4?2:0),sc=song.scale,m=song.key+12+Math.floor(d/5)*12+sc[d%5];kalimba(t,m,rnd(.75,.95));if(B&&!LITE)kalimba(t+SIX*3,m-12,.35)}
-        else if(!nt&&Math.random()<pr*.25){const d=clamp(7+Math.round(rnd(-3,5)),2,14),sc=song.scale;kalimba(t,song.key+24+Math.floor(d/5)*12+sc[d%5]-12,.3)}}
-      else if(Math.random()<pr&&live<SOFT){melDeg=clamp(melDeg+Math.round(rnd(-2.2,2.2)),2,13);const sc=song.scale,m=song.key+12+Math.floor(melDeg/5)*12+sc[melDeg%5];kalimba(t,m,rnd(.6,1))}}
-    if(mode==='menu'&&s%4===0&&Math.random()<.16){const sc=song.scale;kalimba(t,song.key+24+sc[Math.random()*5|0],.55)}
-    if(I>=2&&!brk){const d=song.drums;
-      if(d==='full'||d==='busy'){if(s%4===0)bass(t,root-12+(s===8?7:0),SIX*3,1)}
-      else if(d==='heart'){if(s===0)bass(t,root-12,barLen*.9,1.1)}
+      if(song.mel&&live<SOFT){const ph=(rel%4)*16+s,nt=song.mel.find(x=>x[0]===ph);
+        if(nt&&Math.random()<(I>=2?.94:.72)){const d=nt[1]+(B&&rel%8>=4?2:0),m=deg(song,d);lead(song.lead,t,m,rnd(.75,.95));if(B&&!LITE&&!song.mel2)LEAD[song.lead||'kalimba'](t+SIX*3,m-12,.33)}
+        else if(!nt&&Math.random()<pr*.22){const d=clamp(7+Math.round(rnd(-3,5)),2,14);lead(song.lead,t,deg(song,d),.28)}
+        if(song.mel2&&B&&I>=2){const n2=song.mel2.find(x=>x[0]===ph);if(n2)lead(song.lead2||'flute',t,deg(song,n2[1],0),.55)}}
+      else if(Math.random()<pr&&live<SOFT){melDeg=clamp(melDeg+Math.round(rnd(-2.2,2.2)),2,13);lead(song.lead,t,deg(song,melDeg),rnd(.6,1))}}
+    if(mode==='menu'&&s%4===0&&Math.random()<.16)lead(song.lead,t,song.key+24+song.scale[Math.random()*5|0],.55);
+    // bass
+    if(I>=2&&!brk){const bs=song.bass||(song.drums==='full'||song.drums==='busy'?'drive':song.drums==='heart'?'heart':'walk');
+      if(bs==='drive'){if(s%4===0)bass(t,root-12+(s===8?7:0),SIX*3,1)}
+      else if(bs==='heart'){if(s===0)bass(t,root-12,barLen*.9,1.1)}
+      else if(bs==='pulse'){if(s%2===0)bass(t,root-12+(s===12?7:0),SIX*1.5,s%4===0?1:.7)}
+      else if(bs==='long'){if(s===0)bass(t,root-12,barLen*.95,.9)}
       else{if(s===0)bass(t,root-12,SIX*7,1);if(s===10)bass(t,root-12+7,SIX*3,.8);
         if(s===14&&rel%2===1){const nx=song.key+song.prog[(ci+1)%song.prog.length][0];bass(t,nx-12+(nx>root?-1:1),SIX*2,.6)}}}
+    // drums
     if(I>=2&&!brk){const d=song.drums;
       if(d==='lofi'){if(s===0||s===10)kick(t,1);if(s===4||s===12)snare(t,1);if(s%2===0)hat(t,s%4===2?1:.55);if(I>=3&&s%2===1)hat(t,.3)}
+      else if(d==='brush'){if(s===0||s===10)kick(t,.7);if(s===4||s===12)brush(t,1);if(s%4===2)brush(t,.45);if(I>=3&&s%2===0)hat(t,.35)}
+      else if(d==='drive'){if(s%4===0)kick(t,s===0?1:.85);if(s===4||s===12)clap(t,1);if(s%4===2)ohat(t,1);else if(I>=3&&s%2===1)hat(t,.4)}
       else if(d==='busy'){if(s===0||s===6||s===10)kick(t,1);if(s===4||s===12)snare(t,1.1);hat(t,s%2?.45:1)}
       else if(d==='full'){if(s===0||s===8||s===11)kick(t,1.1);if(s===4||s===12)snare(t,1.2);if(s%2===0)hat(t,.8)}
       else if(d==='heart'){if(s===0||s===3)kick(t,s?.6:1);if(s===8||s===11)kick(t,s===8?.8:.5)}}
-    if(!LITE&&Math.random()<.12)crackle(t+rnd(0,SIX));
-    if(!LITE&&s===0&&bar%2===0)rain(t);
+    // a soft fill into each new section
+    if(I>=2&&rel%8===7&&s>=12&&song.drums&&song.drums!=='none'&&!brk)noise({t,dur:.05,gain:.02+.008*(s-12),ft:'highpass',f:5000+s*200});
+    if(!LITE&&MUSIC.dust!==false&&Math.random()<.12)crackle(t+rnd(0,SIX));
+    if(!LITE&&MUSIC.dust!==false&&s===0&&bar%2===0)rain(t);
     if(mode!=='menu')strings(s,t,rel,root,tones,barLen);
   }
   const last={};let paused=false,hidden=false;
@@ -424,9 +494,13 @@ const Sound=(()=>{
     setPresence(o){for(const k in presWant)delete presWant[k];Object.assign(presWant,o)},
     setPaused(v){paused=v;sync()},setHidden(v){hidden=v;sync()},
     get opts(){return opts},get songName(){return song.name},get state(){return ac?ac.state:'none'},
-    toggle(k){opts[k]=!opts[k];store.set('hush.sound',JSON.stringify(opts));
+    // for the listening page: list the songs and pin one
+    get songs(){return SONGS.map(s=>s.name)},get events(){return Object.keys(EV)},pin(i){forced=i},
+    toggle(k){opts[k]=!opts[k];store.set(MUSIC.storeKey,JSON.stringify(opts));
       if(ac){const g=k==='music'?musicG:sfxG;g.gain.setTargetAtTime(opts[k]?(k==='music'?.6:.75):0,ac.currentTime,.05)}}};
 })();
+
+/*@END MUSIC*/
 
 /* ---------------- the shadows ---------------- */
 const BGS=['#15161f','#171521','#131a1f','#1b1520','#141b1a','#19171c','#12141d'];
@@ -555,7 +629,9 @@ function spawnEnemy(type){
     let tot=o.reduce((s,x)=>s+x[1],0),r=Math.random()*tot;type=o.find(x=>(r-=x[1])<0)[0];
     // breath-takers don't stack: one insomnia at a time, and not while two others already press on your breathing
     if((type==='insomnia'||type==='nightmare'||type==='stress')&&S.enemies.filter(x=>x.type==='insomnia'||x.type==='nightmare').length>=(type==='stress'?3:1))type='doubt'}
-  const T=ET[type],a=rnd(0,TAU),R=Math.hypot(VW,VH)/2+40+T.r;
+  // most shadows come from anywhere around you; now and then a small pack drifts in from one random side
+  if(!(S.packT>S.t)&&Math.random()<.04){S.packA=rnd(0,TAU);S.packT=S.t+rnd(1.2,2.6)}
+  const T=ET[type],a=S.packT>S.t&&Math.random()<.65?S.packA+rnd(-.4,.4):rnd(0,TAU),R=Math.hypot(VW,VH)/2+rnd(30,140)+T.r;
   const D=diff(),hs=Math.pow(D,1.3),elite=!T.boss&&!T.hide&&Math.random()<clamp((D-1.12)*.12,0,.55),em=elite?3:1;
   const bm=T.boss?1.35:1;
   const e={type,elite,x:S.p.x+Math.cos(a)*R,y:S.p.y+Math.sin(a)*R,r:T.r*(elite?1.3:1),hp:T.hp*hs*em*bm,max:T.hp*hs*em*bm,spd:T.spd*rnd(.9,1.1)*(elite?1.1:1),
