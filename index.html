@@ -118,6 +118,13 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
 .stats{display:flex;justify-content:center;gap:18px;margin:14px 0 10px;font-size:15px;color:var(--muted)}
 .stats b{display:block;font-size:26px;color:var(--ink)}
 .most{font-size:14px;color:var(--muted);margin-bottom:14px}
+.lightBox{margin:12px auto 4px;max-width:320px;text-align:left;font-size:13.5px;color:#cfc9dc;display:grid;gap:5px}
+.lightBox b{color:var(--gold)}
+.lbBar{height:5px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
+.lbBar i{display:block;height:100%;background:var(--gold)}
+.lbNext,.lbAdd{color:var(--muted);font-size:12.5px}
+.lbGot{display:flex;flex-wrap:wrap;gap:5px}
+.lbGot span{font-size:11.5px;border:1px solid rgba(255,217,138,.35);color:var(--gold);border-radius:999px;padding:1px 8px}
 .bh{margin-top:12px;font-size:13px;color:var(--muted);letter-spacing:.04em}
 .board{list-style:none;margin:6px auto 8px;padding:0;max-width:320px;font-size:14px;text-align:left}
 .board li{display:grid;grid-template-columns:20px 1fr auto auto;gap:10px;align-items:baseline;padding:3px 10px;border-radius:9px;color:#cfc9dc}
@@ -155,6 +162,7 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
     </div>
     <div style="margin-top:14px"><button class="tog" id="musicTog">music</button><button class="tog" id="sfxTog">sound</button><button class="tog" id="numTog">numbers</button></div>
     <div class="best" id="bestLbl"></div>
+    <div id="lightMenu"></div>
     <div id="menuBoard"></div>
     <div class="met" id="metLbl"></div>
     <div class="chips" id="metChips"></div>
@@ -526,7 +534,7 @@ const OVER_TITLES=['the shadows won this round','too much for today','that\'s ok
 
 /* ---------------- game state ---------------- */
 function newGame(){
-  S={state:'play',t:0,wave:1,waveT:0,waveLen:35,level:1,xp:0,xpNeed:6,pending:0,kills:0,quieted:{},taken:{},comp:[],
+  S={state:'play',t:0,wave:1,waveT:0,waveLen:35,level:1,xp:0,xpNeed:6,pending:0,wcd:{},evo:{},collected:0,kills:0,quieted:{},taken:{},comp:[],
     p:{x:0,y:0,r:14,hp:100,maxHp:100,inv:0,vx:0,vy:0,still:0,tier:1,ph:0},
     breath:100,mods:{dmg:1,cd:1,hp:1,extra:0,aoe:1,magnet:1,speed:1,regen:0,breath:1,refill:1,cost:1,pierce:0},
     enemies:[],shots:[],eshots:[],motes:[],fx:[],rings:[],pickups:[],texts:[],dnums:[],warns:[],lull:0,nextLull:140,roster:makeRoster(),puddles:[],path:[],pathT:0,nextWake:0,slots:[],ink:[],decoy:null,faithT:0,nameT:0,slowT:0,inkT:0,friendT:0,friendCd:0,helpT:32,formT:20,formLast:'',exCd:0,nearD:1e9,aimE:null,aimT:0,
@@ -548,7 +556,7 @@ function spawnEnemy(type){
     // breath-takers don't stack: one insomnia at a time, and not while two others already press on your breathing
     if((type==='insomnia'||type==='nightmare'||type==='stress')&&S.enemies.filter(x=>x.type==='insomnia'||x.type==='nightmare').length>=(type==='stress'?3:1))type='doubt'}
   const T=ET[type],a=rnd(0,TAU),R=Math.hypot(VW,VH)/2+40+T.r;
-  const D=diff(),hs=Math.pow(D,1.15),elite=!T.boss&&!T.hide&&Math.random()<clamp((D-1.12)*.12,0,.55),em=elite?3:1;
+  const D=diff(),hs=Math.pow(D,1.3),elite=!T.boss&&!T.hide&&Math.random()<clamp((D-1.12)*.12,0,.55),em=elite?3:1;
   const bm=T.boss?1.35:1;
   const e={type,elite,x:S.p.x+Math.cos(a)*R,y:S.p.y+Math.sin(a)*R,r:T.r*(elite?1.3:1),hp:T.hp*hs*em*bm,max:T.hp*hs*em*bm,spd:T.spd*rnd(.9,1.1)*(elite?1.1:1),
     dmg:T.dmg*1.35*(1+.26*(D-1))*(elite?1.5:1),rot:rnd(0,TAU),spin:rnd(-1,1)*(T.boss?.3:1),ph:rnd(0,TAU),flash:0,pop:0,kx:0,ky:0,
@@ -580,19 +588,22 @@ function pickTarget(range,noArmor){const dir=aimDir(),P=S.p;let best=null,bs=1e1
     const sc=dir?d*(1.55-.85*(dx*dir[0]+dy*dir[1])/d):d;if(sc<bs){bs=sc;best=e}}return best}
 function nearest(range){return pickTarget(range)}
 const power=()=>S.mods.dmg*(1+(S.p.tier-1)*.36);
-function shoot(){
-  const P=S.p,rng=Math.min(Math.max(VW,VH)*.45,420),wpn=rollWeapon(),weak=wpn==='pulse'||wpn==='petal',tg=(weak&&pickTarget(rng,true))||pickTarget(rng);if(!tg)return false;S.aimE=tg;S.aimT=.8;
-  const cost=4*S.mods.cost;if(S.breath<cost){S.dryT=.5;return false}
+const WPN={pulse:{cd:.6,cost:3},petal:{cd:1.3,cost:3.5},ripple:{cd:2.6,cost:6},drift:{cd:2.4,cost:5},star:{cd:2.8,cost:6}};
+function shoot(wpn){
+  const P=S.p,rng=Math.min(Math.max(VW,VH)*.45,420),weak=wpn==='pulse'||wpn==='petal',tg=(weak&&pickTarget(rng,true))||pickTarget(rng);if(!tg)return false;S.aimE=tg;S.aimT=.8;
+  const cost=WPN[wpn].cost*S.mods.cost;if(S.breath<cost){S.dryT=.5;return false}
   S.breath-=cost;const a0=Math.atan2(tg.y-P.y,tg.x-P.x),pw=power(),ex=S.mods.extra;
   const vis=Math.min(1.9,1+(pw-1)*.35),base=wpn==='petal'?3:1;let shotN=0;
   const mk=(a,o)=>{const c=shotN>=base?S.comp[shotN-base]:null,ox=c?c.x:P.x+Math.cos(a)*16,oy=c?c.y:P.y+Math.sin(a)*16;if(c)c.flash=.2;shotN++;
     const aa=c?Math.atan2(tg.y-oy,tg.x-ox)+(a-a0)*.4:a;
     S.shots.push(Object.assign({x:ox,y:oy,vx:Math.cos(aa)*o.sp,vy:Math.sin(aa)*o.sp,life:o.life||1.1,pierce:S.mods.pierce+(o.pierce||0),hits:[],trail:[],col:WCOL[o.k]},o,{r:o.r*vis}))};
   const fan=(n,gap)=>{const out=[];for(let i=0;i<n;i++)out.push(a0+(i-(n-1)/2)*gap);return out};
-  if(wpn==='pulse')fan(1+ex,.14).forEach(a=>mk(a,{k:'pulse',sp:520,r:6,dmg:12*pw}));
+  if(wpn==='pulse')fan(1+ex,.14).forEach(a=>mk(a,{k:'pulse',sp:S.evo.pulse?640:520,r:S.evo.pulse?7.5:6,dmg:12*pw,pierce:S.evo.pulse?2:0}));
   else if(wpn==='petal')fan(3+ex,.22).forEach(a=>mk(a,{k:'petal',sp:560,r:4.5,dmg:8*pw}));
   else if(wpn==='ripple'){const R=105*S.mods.aoe;S.rings.push({x:P.x,y:P.y,r:P.r,R,life:.5,max:.5,col:WCOL.ripple,w:5*vis});S.rings.push({x:P.x,y:P.y,r:P.r,R:R*.6,life:.4,max:.4,col:'#dff1fb',w:2});Sound.play('ripple');
-    for(const e of S.enemies)if(e.under<=0&&!hidden(e)&&d2(e,P)<(R+e.r)**2)hitEnemy(e,(14+ex*3)*pw,P);}
+    for(const e of S.enemies)if(e.under<=0&&!hidden(e)&&d2(e,P)<(R+e.r)**2)hitEnemy(e,(14+ex*3)*pw,P);
+    if(S.evo.ripple){const R2=R*1.45;S.rings.push({x:P.x,y:P.y,r:R*.8,R:R2,life:.7,max:.7,col:WCOL.ripple,w:4*vis});
+      for(const e of S.enemies){if(e.under>0||hidden(e))continue;const q=d2(e,P);if(q>=(R+e.r)**2&&q<(R2+e.r)**2)hitEnemy(e,(10+ex*2)*pw,P)}}}
   else if(wpn==='drift')fan(1+Math.floor(ex/2),.2).forEach(a=>mk(a,{k:'drift',sp:230,r:12,dmg:20*pw,life:2.2,pierce:4}));
   else if(wpn==='star')fan(1+Math.floor(ex/2),.16).forEach(a=>mk(a,{k:'star',sp:480,r:6.5,dmg:16*pw}));
   if(wpn!=='ripple')Sound.play('shot');
@@ -623,7 +634,7 @@ function hitEnemy(e,d,src){
   if(src){const dx=e.x-src.x,dy=e.y-src.y,l=Math.hypot(dx,dy)||1,kb=ET[e.type].boss?20:120;e.kx+=dx/l*kb;e.ky+=dy/l*kb}
 }
 function killEnemy(e){
-  const T=ET[e.type];if(T.grief){const P=S.p;P.hp=Math.max(1,P.hp-P.maxHp*.06);S.texts.push({x:P.x,y:P.y-58,txt:'you carry a little of it',t:1.8,max:1.8})}S.kills++;if(!T.hide)S.quieted[e.type]=(S.quieted[e.type]||0)+1;
+  const T=ET[e.type];S.breath=Math.min(100*S.mods.breath,S.breath+.5);if(T.grief){const P=S.p;P.hp=Math.max(1,P.hp-P.maxHp*.06);S.texts.push({x:P.x,y:P.y-58,txt:'you carry a little of it',t:1.8,max:1.8})}S.kills++;if(!T.hide)S.quieted[e.type]=(S.quieted[e.type]||0)+1;
   S.combo=S.comboT>0?S.combo+1:1;S.comboT=2.4;Sound.play('pop',S.combo);
 
   const n=T.boss?40:6+e.r*.4|0;
@@ -640,7 +651,7 @@ function killEnemy(e){
 }
 
 /* ---------------- growth ---------------- */
-function gainXp(v){S.xp+=v;while(S.xp>=S.xpNeed){S.xp-=S.xpNeed;S.level++;levelBoost();S.xpNeed=S.level<4?5+S.level*3:Math.round(9+S.level*3.4+Math.pow(S.level,1.4));}
+function gainXp(v){S.xp+=v;while(S.xp>=S.xpNeed){S.xp-=S.xpNeed;S.level++;levelBoost();S.xpNeed=S.level<4?5+S.level*3:Math.round(9+S.level*3.4+Math.pow(S.level,1.55));}
   rankCheck();if(S.pending&&S.state==='play'&&!S.choosing)showCards()}
 const HELP={
   faith:{n:'faith',col:'#ffd98a',cd:40,d:'a light that holds you',ic:'M12 3c2 3 4 5 4 8a4 4 0 0 1-8 0c0-3 2-5 4-8z M12 15v6 M9 21h6'},
@@ -669,7 +680,7 @@ function helperShot(x,y,col,range,dmg){let best=null,bd=range*range;for(const e 
   const a=Math.atan2(best.y-y,best.x-x);S.shots.push({k:'pulse',x,y,vx:Math.cos(a)*460,vy:Math.sin(a)*460,r:5,dmg,life:1.1,pierce:0,hits:[],trail:[],col})}
 function useSkill(i){if(!S||S.state!=='play'||S.guide)return;const sl=S.slots[i];if(!sl)return;const P=S.p,H=HELP[sl.k];
   if(sl.cd>0){S.texts.push({x:P.x,y:P.y-58,txt:H.n+' · '+Math.ceil(sl.cd)+'s',t:1,max:1});return}
-  sl.cd=H.cd;S.texts.push({x:P.x,y:P.y-62-i*20,txt:H.n,t:1.8,max:1.8});
+  sl.cd=H.cd*(S.helpRest||1);S.texts.push({x:P.x,y:P.y-62-i*20,txt:H.n,t:1.8,max:1.8});
   for(let k=0;k<3;k++)S.rings.push({x:P.x,y:P.y,r:14,R:90+k*50,life:.6+k*.12,max:.6+k*.12,col:H.col,w:4-k});
   if(sl.k==='faith'){S.faithT=5;Sound.play('form')}
   else if(sl.k==='therapy'){S.nameT=8;Sound.play('bell')}
@@ -720,8 +731,17 @@ function drawHelpPickup(p){const H=HELP[p.sk],y=p.y+Math.sin(p.ph*2.5)*4,fade=p.
   ctx.save();ctx.translate(p.x-13,y-13);ctx.scale(26/24,26/24);ctx.lineWidth=1.8;ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke(hp2d(p.sk));ctx.restore();
   ctx.textAlign='center';ctx.font='700 '+Math.round(12/Math.sqrt(Z))+'px '+FONT;ctx.fillStyle=H.col;ctx.fillText(H.n,p.x,y+38);ctx.globalAlpha=1}
 const CHOICE_EVERY=3;
+const EVO={pulse:{ic:'power',need:3,n:'a piercing ray',d:'your ray passes through two more shadows'},
+  petal:{ic:'echo',need:2,n:'chain sparks',d:'each spark jumps on to another shadow'},
+  ripple:{ic:'wide',need:2,n:'the tide',d:'your deep breath rolls out a second, wider wave'},
+  drift:{ic:'gentle',need:2,n:'lingering calm',d:'bubbles slow every shadow they touch'},
+  star:{ic:'pierce',need:2,n:'a constellation',d:'your starburst bursts into nine shards'}};
+function checkEvo(){for(const w in EVO){const E=EVO[w];if(S.evo[w]||(S.taken[E.ic]||0)<E.need)continue;S.evo[w]=true;const P=S.p;
+  S.banner={txt:WNAME[w]+' evolved',t:2.4};quietNote(E.n,E.d+(unlocked().includes(w)?'':' (once you learn '+WNAME[w]+')'),WCOL[w]);Sound.play('form');S.joyT=2;
+  for(let i=0;i<3;i++)S.rings.push({x:P.x,y:P.y,r:12,R:120+i*60,life:.7+i*.15,max:.7+i*.15,col:WCOL[w],w:5-i})}}
+function evoHint(ic){for(const w in EVO){const E=EVO[w];if(E.ic!==ic||S.evo[w])continue;const left=E.need-(S.taken[ic]||0);if(left>0)return left===1?' · next one evolves '+WNAME[w]:' · '+left+' more to evolve '+WNAME[w]}return ''}
 function levelBoost(){const P=S.p;
-  if(S.level%CHOICE_EVERY===0){S.pending++;relief('you grew');return}
+  if(S.level<=6?S.level%2===0:S.level%CHOICE_EVERY===0){S.pending++;relief('you grew');return}
   // in between: a small, automatic lift
   S.mods.dmg*=1.04;P.maxHp+=4;P.hp=Math.min(P.maxHp,P.hp+P.maxHp*.08);Sound.play('pickup');
   S.texts.push({x:P.x,y:P.y-56,txt:'a little lighter',t:1.4,max:1.4});
@@ -758,8 +778,8 @@ function showCards(){
   const pool=UPG.filter(u=>!u.ok||u.ok()),chosen=[];
   while(chosen.length<3&&pool.length)chosen.push(pool.splice(Math.random()*pool.length|0,1)[0]);
   chosen.forEach((u,i)=>{const b=document.createElement('button');b.className='card';b.id='card'+i;
-    b.innerHTML='<i>'+(i+1)+'</i><div class="ic" style="background:'+ICON_BG[u.ic]+'">'+iconSVG(u.ic)+'</div><div><strong>'+u.n+'</strong><span>'+(u.dd?u.dd():u.d)+'</span></div>';
-    b.onclick=()=>{Sound.play('click');u.f();S.taken[u.ic]=(S.taken[u.ic]||0)+1;pickFx(u);renderKit();S.pending--;S.choosing=false;$('cards').hidden=true;updateHud();if(S.pending>0)setTimeout(()=>{if(S&&S.pending>0&&!S.choosing&&S.state!=='over')showCards()},250)};
+    const hint=evoHint(u.ic);b.innerHTML='<i>'+(i+1)+'</i><div class="ic" style="background:'+ICON_BG[u.ic]+'">'+iconSVG(u.ic)+'</div><div><strong>'+u.n+(hint&&hint.includes('next one')?' <b style="color:var(--gold)">✦</b>':'')+'</strong><span>'+(u.dd?u.dd():u.d)+hint+'</span></div>';
+    b.onclick=()=>{Sound.play('click');u.f();S.taken[u.ic]=(S.taken[u.ic]||0)+1;pickFx(u);checkEvo();renderKit();S.pending--;S.choosing=false;$('cards').hidden=true;updateHud();if(S.pending>0)setTimeout(()=>{if(S&&S.pending>0&&!S.choosing&&S.state!=='over')showCards()},250)};
     list.appendChild(b)});
   $('cards').hidden=false;placeTray();
 }
@@ -835,13 +855,15 @@ function update(dt){
   {const nc=Math.min(6,m.extra);while(S.comp.length<nc)S.comp.push({x:P.x,y:P.y,flash:0});S.comp.length=nc;
     S.comp.forEach((c,i)=>{const a=P.ph*1.4+i/nc*TAU;c.x=lerp(c.x,P.x+Math.cos(a)*64,.25);c.y=lerp(c.y,P.y+Math.sin(a)*64,.25);c.flash-=dt})}
   if(m.regen>0&&Math.random()<dt*6*Math.min(3,m.regen))S.fx.push({x:P.x+rnd(-12,12),y:P.y+rnd(-4,10),vx:0,vy:-32,r:2.2,col:'#9fe0a0',life:.8,max:.8,a:.8});
-  if(moving){P.still=0;if(S.guide){S.guideMoved+=Math.hypot(P.vx,P.vy)*dt;if(S.guideMoved>170){S.guide=false;S.banner={txt:'wave 1',t:1.8};S.thought={txt:pick(THOUGHTS),t:4};
+  if(moving){P.still=0;if(S.guide){S.guideMoved+=Math.hypot(P.vx,P.vy)*dt;if(S.guideMoved>170){S.guide=false;S.banner={txt:'wave 1',t:1.8};S.thought={txt:pick(THOUGHTS),t:4};startBoons();
     quietNote('what weighs on you today',S.roster.length+' shadows. they arrive one by one. the pause menu keeps track.')}}}
   else P.still+=dt;
   if(S.boost>0){S.boost-=dt;if(Math.random()<dt*20)S.fx.push({x:P.x+rnd(-8,8),y:P.y+rnd(-8,8),vx:-P.vx*.3,vy:-P.vy*.3,r:3,col:'#9fe0c0',life:.5,max:.5})}
   // breath (stress nearby takes it away)
   const bmax=100*m.breath,breathing=P.still>.25&&S.breath<bmax;
-  if(breathing){if(!S.wasBreathing)Sound.play('inhale');S.calm=S.aura.nobreath?.15:S.lull>0?1.4:clamp((S.nearD-50)/230,.3,1);S.breath=Math.min(bmax,S.breath+45*m.refill*dt*(S.aura.breath?.5:1)*S.calm);S.inhaleT+=dt}else{S.breath=Math.min(bmax,S.breath+2*dt);S.inhaleT=0}
+  // moving slowly also lets you breathe a little; standing still breathes fully
+  const pspd=Math.hypot(P.vx,P.vy),slowWalk=!breathing&&pspd<sp*.45&&S.breath<bmax;
+  if(breathing||slowWalk){if(breathing&&!S.wasBreathing)Sound.play('inhale');S.calm=S.aura.nobreath?.15:S.lull>0?1.4:clamp((S.nearD-50)/230,.4,1);S.breath=Math.min(bmax,S.breath+45*m.refill*dt*(S.aura.breath?.5:1)*S.calm*(breathing?1:.25));S.inhaleT=breathing?S.inhaleT+dt:0}else{S.breath=Math.min(bmax,S.breath+2*dt);S.inhaleT=0}
   if(S.aura.breath)S.breath=Math.max(0,S.breath-4.5*dt);
   S.wasBreathing=breathing;S.dryT-=dt;
   S.cam.x=lerp(S.cam.x,P.x,1-Math.exp(-dt*6));S.cam.y=lerp(S.cam.y,P.y,1-Math.exp(-dt*6));
@@ -867,7 +889,7 @@ function update(dt){
   const cap=LITE?170:240,rate=(.66+.42*diff()+.45*clamp(1-S.t/150,0,1))*(S.storm?2.4:1)*(S.shadow?.4:1)*(S.lull>0?.12:1);
   S.spawnAcc+=dt*rate;while(S.spawnAcc>=1){S.spawnAcc--;if(S.enemies.length<cap)spawnEnemy()}
   // shooting (emptiness nearby dims your light)
-  S.fireT-=dt;if(S.fireT<=0){if(shoot())S.fireT=.55*m.cd*(S.aura.dim?1.65:1);else S.fireT=.12}
+  for(const w of unlocked()){if(S.wcd[w]===undefined)S.wcd[w]=rnd(.05,.4);S.wcd[w]-=dt;if(S.wcd[w]<=0)S.wcd[w]=shoot(w)?WPN[w].cd*m.cd*(S.aura.dim?1.65:1):.15}
   S.exCd-=dt;S.aimT-=dt;S.wordT=(S.wordT||0)-dt;if(S.word){S.word.t-=dt;if(S.word.t<=0)S.word=null}S.dark=Math.max(0,(S.dark||0)-dt);S.lonelyT=Math.max(0,(S.lonelyT||0)-dt);S.joyT=(S.joyT||0)-dt;S.growT=Math.max(0,(S.growT||0)-dt);updateHelpers(dt);
   P.hp=Math.min(P.maxHp,P.hp+m.regen*dt);P.inv-=dt;S.freeze-=dt;S.comboT-=dt;
   updateEnemies(dt);updateShots(dt);updateMotes(dt);updatePickups(dt);
@@ -929,6 +951,7 @@ function updateEnemies(dt){
       let mx=dx/l,my=dy/l,sp=e.spd,skip=false;
       if(S.decoy&&!T.boss&&!e.dash){const ddx=S.decoy.x-e.x,ddy=S.decoy.y-e.y,dl=Math.hypot(ddx,ddy)||1;if(dl<750){mx=ddx/dl;my=ddy/dl}}
       if(S.nameT>0)sp*=.6;
+      if(e.slowT>0){e.slowT-=dt;sp*=.5}
       if(e.disg){skip=true;if(l<75){e.disg=false;e.pop=1;Sound.play('whisper');S.texts.push({x:e.x,y:e.y-30,txt:'not a gift',t:1.4,max:1.4});S.rings.push({x:e.x,y:e.y,r:8,R:60,life:.4,max:.4,col:T.col,w:3})}}
       if(e.sleep){skip=true;if(S.t>=e.wakeAt||l<95)wakeAll()}
       if(T.lonely){if(l<250){mx=-mx;my=-my}else if(l<310){const tx=-my,ty=mx;mx=tx;my=ty}}
@@ -970,7 +993,10 @@ function updateShots(dt){
     s.x+=s.vx*dt;s.y+=s.vy*dt;s.life-=dt;let dead=s.life<=0;
     if(!dead)for(const e of S.enemies){if(e.under>0||hidden(e)||s.hits.includes(e))continue;
       if(d2(s,e)<(s.r+e.r)**2){hitEnemy(e,s.dmg,s);s.hits.push(e);
-        if(s.k==='star'){const R=1+S.mods.aoe;for(let k=0;k<5;k++){const a=k/5*TAU+rnd(0,.5);S.shots.push({k:'shard',col:WCOL.star,x:s.x,y:s.y,vx:Math.cos(a)*150*R,vy:Math.sin(a)*150*R,r:3,dmg:s.dmg*.4,life:.35,pierce:0,hits:[e],trail:[]})}}
+        if(s.k==='drift'&&S.evo.drift)e.slowT=1.6;
+        if(s.k==='petal'&&S.evo.petal&&!s.chained){let nb=null,nd=150*150;for(const o of S.enemies){if(o===e||o.under>0||hidden(o)||s.hits.includes(o))continue;const q=d2(o,e);if(q<nd){nd=q;nb=o}}
+          if(nb){const a=Math.atan2(nb.y-e.y,nb.x-e.x);S.shots.push({k:'petal',col:WCOL.petal,x:e.x,y:e.y,vx:Math.cos(a)*600,vy:Math.sin(a)*600,r:s.r*.9,dmg:s.dmg*.8,life:.4,pierce:0,hits:[e],trail:[],chained:true})}}
+        if(s.k==='star'){const R=1+S.mods.aoe,nS=S.evo.star?9:5;for(let k=0;k<nS;k++){const a=k/nS*TAU+rnd(0,.5);S.shots.push({k:'shard',col:WCOL.star,x:s.x,y:s.y,vx:Math.cos(a)*150*R,vy:Math.sin(a)*150*R,r:3,dmg:s.dmg*.4,life:.35,pierce:0,hits:[e],trail:[]})}}
         if(s.pierce>0)s.pierce--;else{dead=true;break}}}
     if(dead){S.shots.splice(i,1);S.fx.push({x:s.x,y:s.y,vx:0,vy:0,r:s.r*1.4,col:s.col||GOLD,life:.18,max:.18,a:.4})}
   }
@@ -988,7 +1014,7 @@ function updateMotes(dt){
     else if(m.t>.6){const dx=P.x-m.x,dy=P.y-m.y,l=Math.hypot(dx,dy)||1,v=Math.min(160,40+m.t*12);m.vx=lerp(m.vx,dx/l*v,.1);m.vy=lerp(m.vy,dy/l*v,.1)}
     else{m.vx*=Math.exp(-dt*4);m.vy*=Math.exp(-dt*4)}
     m.x+=m.vx*dt;m.y+=m.vy*dt;
-    if(d2(m,P)<(P.r+6)**2){S.motes.splice(i,1);Sound.play('tink',S.moteNote++);gainXp(1);if(S.state!=='play')return}
+    if(d2(m,P)<(P.r+6)**2){S.motes.splice(i,1);Sound.play('tink',S.moteNote++);S.collected=(S.collected||0)+1;S.breath=Math.min(100*S.mods.breath,S.breath+.6);gainXp(1);if(S.state!=='play')return}
   }
   if(S.motes.length>400)S.motes.splice(0,S.motes.length-400);
 }
@@ -1433,12 +1459,38 @@ function boardSave(e){const L=boardLoad().filter(x=>x.id!==e.id);L.push(e);L.sor
 const dstr=d=>{try{return new Date(d).toLocaleDateString(undefined,{day:'numeric',month:'short'})}catch(e){return ''}};
 function boardHTML(L,id,n){if(!L.length)return '';return '<div class="bh">best runs</div><ol class="board">'+L.slice(0,n).map((x,i)=>'<li'+(x.id===id?' class="me"':'')+'><span>'+(i+1)+'</span><b>'+fmtTime(x.s)+'</b><i>'+x.f+(x.w?' · won':'')+'</i><em>'+dstr(x.d)+'</em></li>').join('')+'</ol>'}
 // one entry per run: winning records it, and if you keep going, the same entry is updated when it ends
+const BOONS=[
+  {at:150,n:'a steadier start',d:'start with 15% more health'},
+  {at:500,n:'an old friend',d:'start each run holding a helper'},
+  {at:1200,n:'deeper breaths',d:'start with 20% more breath'},
+  {at:2500,n:'a head start',d:'start with an upgrade to choose'},
+  {at:4500,n:'never alone',d:'start with one companion light'},
+  {at:8000,n:'well rested',d:'helpers rest 20% faster'}];
+const lightTotal=()=>+(store.get('hush.light')||0);
+const boonOn=i=>lightTotal()>=BOONS[i].at;
+function applyBoons(){const P=S.p;
+  if(boonOn(0)){S.mods.hp*=1.15;P.maxHp=100*S.mods.hp;P.hp=P.maxHp}
+  if(boonOn(2)){S.mods.breath*=1.2;S.breath=100*S.mods.breath}
+  if(boonOn(4))S.mods.extra++;
+  if(boonOn(5))S.helpRest=.8;
+  if(boonOn(1))S.startHelper=true;if(boonOn(3))S.startCard=true}
+// once the first-run guide is over: the boons that need the game running
+function startBoons(){if(S.startHelper){S.startHelper=false;const k=pick(Object.keys(HELP));S.seen['help_'+k]=S.seen['help_'+k]||false;equipHelp(k)}
+  if(S.startCard){S.startCard=false;S.pending++;if(!S.choosing)showCards()}}
+function saveLight(){const add=(S.collected||0)-(S.lightSaved||0);if(add<=0)return {add:0,unlocked:[]};const before=lightTotal(),after=before+add;store.set('hush.light',after);S.lightSaved=S.collected;
+  return {add,total:after,unlocked:BOONS.filter(b=>b.at>before&&b.at<=after)}}
+function lightHTML(r){const tot=lightTotal(),next=BOONS.find(b=>b.at>tot);let h='<div class="lightBox"><div class="lbTop"><b>✦ '+tot+'</b> light gathered across all runs</div>';
+  if(r&&r.add)h+='<div class="lbAdd">+'+r.add+' this run'+(r.unlocked.length?' · <b>unlocked: '+r.unlocked.map(b=>b.n).join(', ')+'</b>':'')+'</div>';
+  if(next){const prev=[...BOONS].reverse().find(b=>b.at<=tot),lo=prev?prev.at:0;h+='<div class="lbBar"><i style="width:'+((tot-lo)/(next.at-lo)*100).toFixed(1)+'%"></i></div><div class="lbNext">next at ✦ '+next.at+': <b>'+next.n+'</b> · '+next.d+'</div>'}
+  else h+='<div class="lbNext">every gift is unlocked</div>';
+  const got=BOONS.filter(b=>b.at<=tot);if(got.length)h+='<div class="lbGot">'+got.map(b=>'<span title="'+b.d+'">'+b.n+'</span>').join('')+'</div>';return h+'</div>'}
 function recordRun(won){if(!S.runId)S.runId=Date.now()+'-'+Math.random().toString(36).slice(2,6);if(won)S.wonRun=true;
-  const L=boardSave({id:S.runId,s:Math.floor(S.t),f:FORMS[S.p.tier],w:!!S.wonRun,d:Date.now()});$('overBoard').innerHTML=boardHTML(L,S.runId,10)}
+  const L=boardSave({id:S.runId,s:Math.floor(S.t),f:FORMS[S.p.tier],w:!!S.wonRun,d:Date.now()});const lr=saveLight();S.lightRun=(S.lightRun||0)+lr.add;
+  $('overBoard').innerHTML=lightHTML({add:S.lightRun,unlocked:lr.unlocked})+boardHTML(L,S.runId,10)}
 const fmtTime=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
 function mostQuieted(){const arr=Object.entries(S.quieted).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4);
   return arr.length?'you quieted '+arr.map(([k,v])=>v+' '+ET[k].name).join(' · '):''}
-function start(){Sound.init();newGame();Ads.preload();for(const id of ['menu','over','pause','cards','explain'])$(id).hidden=true;$('keepBtn').hidden=true;$('hud').hidden=false;last=performance.now();updateHud();renderKit();renderSkills()}
+function start(){Sound.init();newGame();applyBoons();renderKit&&0;Ads.preload();for(const id of ['menu','over','pause','cards','explain'])$(id).hidden=true;$('keepBtn').hidden=true;$('hud').hidden=false;last=performance.now();updateHud();renderKit();renderSkills()}
 function showOver(title,line){$('oTitle').textContent=title;$('oLine').textContent=line;$('oTime').textContent=fmtTime(S.t);$('oLvl').textContent=S.level;$('oKills').textContent=S.kills;$('oMost').textContent=mostQuieted()}
 function revive(){const P=S.p;S.continued=true;P.hp=P.maxHp*.5;S.state='play';$('over').hidden=true;S.shadow=null;
   relief('one more breath');P.inv=2.5;S.breath=100*S.mods.breath;Sound.setMode('battle',2);last=performance.now()}
@@ -1450,7 +1502,7 @@ function win(){if(!S||S.state==='over'||S.state==='won')return;if(S.state!=='pla
   S.state='won';$('contBtn').hidden=true;Sound.play('win');Sound.setMode('menu',0);store.set('hush.won','1');if(S.t>+(store.get('hush.longest')||0))store.set('hush.longest',Math.floor(S.t));
   showOver('quiet, at last','you didn\'t make them disappear. you learned to hold them.');recordRun(true);$('keepBtn').hidden=false;$('over').hidden=false}
 function toMenu(){S=null;Sound.setMode('menu',0);Sound.setPaused(false);for(const id of ['over','pause','cards','explain','hud','kit'])$(id).hidden=true;$('menu').hidden=false;menuInfo()}
-function menuInfo(){$('menuBoard').innerHTML=boardHTML(boardLoad(),null,5);const b=+(store.get('hush.longest')||0);$('bestLbl').textContent=b?'longest: '+fmtTime(b)+(store.get('hush.won')?' · you quieted panic':''):'';
+function menuInfo(){$('lightMenu').innerHTML=lightTotal()?lightHTML(null):'';$('menuBoard').innerHTML=boardHTML(boardLoad(),null,5);const b=+(store.get('hush.longest')||0);$('bestLbl').textContent=b?'longest: '+fmtTime(b)+(store.get('hush.won')?' · you quieted panic':''):'';
   const m=metStore(),n=MET_KEYS.filter(k=>m[k]).length;
   $('metLbl').textContent=n?'shadows you\'ve met: '+n+' of '+MET_KEYS.length:'';
   $('metChips').innerHTML=n?MET_KEYS.map(k=>m[k]?'<span class="chip" style="color:'+ET[k].col+';border-color:'+hexA(ET[k].col,.4)+'">'+ET[k].name+'</span>':'<span class="chip unk">?</span>').join(''):''}
