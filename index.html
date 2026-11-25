@@ -73,11 +73,12 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
   .tray{padding:5px 6px 6px;border-radius:18px}
   .tray .th{font-size:11.5px;margin:0 0 4px}
   .cards{gap:5px}
-  .card{flex-direction:row;gap:7px;padding:6px 12px 6px 6px;border-radius:999px;width:auto;min-width:138px;max-width:52vw;text-align:left}
+  .card{flex-direction:row;gap:7px;padding:6px 12px 6px 8px;border-radius:18px;width:auto;min-width:144px;max-width:56vw;text-align:left}
   .card .ic{flex:0 0 30px;width:30px;height:30px}
   .card .ic svg{width:17px;height:17px}
+  .card>div:last-child{min-width:0;overflow:hidden}
   .card strong{font-size:12.5px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .card span{display:none}
+  .card span{display:block;font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.88}
 }
 .exText{font-size:18px;line-height:1.6;margin:8px 0 18px}
 .exText b{color:var(--gold)}
@@ -218,6 +219,22 @@ h2{font-size:30px;font-weight:700;margin:0 0 8px}
 <script>
 (()=>{
 'use strict';
+// Portal SDK auto-loader & init (CrazyGames, Poki)
+try{
+  const h=location.hostname,q=location.search;
+  const initCG=()=>{try{if(window.CrazyGames&&window.CrazyGames.SDK&&!window._cgInit){window._cgInit=true;Promise.resolve(window.CrazyGames.SDK.init()).catch(()=>{})}}catch(e){}};
+  const initPoki=()=>{try{if(window.PokiSDK&&!window._pokiInit){window._pokiInit=true;Promise.resolve(window.PokiSDK.init()).then(()=>{try{window.PokiSDK.gameLoadingFinished()}catch(e){}}).catch(()=>{})}}catch(e){}};
+  if(window.CrazyGames&&window.CrazyGames.SDK)initCG();
+  else if(/[?&]portal=crazygames\b/.test(q)||h.includes('crazygames')||h.includes('1001juegos')){
+    const s=document.createElement('script');s.src='https://sdk.crazygames.com/crazygames-sdk-v3.js';
+    s.onload=initCG;document.head.appendChild(s);
+  }
+  if(window.PokiSDK)initPoki();
+  else if(/[?&]portal=poki\b/.test(q)||h.includes('poki')){
+    const s=document.createElement('script');s.src='https://game-cdn.poki.com/scripts/v2/poki-sdk.js';
+    s.onload=initPoki;document.head.appendChild(s);
+  }
+}catch(e){}
 const $=id=>document.getElementById(id);
 const cv=$('cv'),ctx=cv.getContext('2d');
 let W=0,H=0,DPR=1,vignette=null,Z=1,VW=0,VH=0,QL=0,QCAP=2;
@@ -1511,13 +1528,59 @@ function drawMenuScene(){
 }
 
 
-/* ---------------- rewarded ads (only when the app was built with ads, or ?ads=test in a browser) ---------------- */
-const Ads={mode(){return window.GameAds?'android':/[?&]ads=test\b/.test(location.search)?'test':'none'},
+/* ---------------- universal monetization & ads (Android, CrazyGames, Poki, Test) ---------------- */
+const Ads={
+  mode(){
+    if(window.GameAds)return 'android';
+    if(window.CrazyGames&&window.CrazyGames.SDK)return 'crazygames';
+    if(window.PokiSDK)return 'poki';
+    if(/[?&]ads=test\b/.test(location.search))return 'test';
+    return 'none';
+  },
   on(){return this.mode()!=='none'},
   preload(){try{if(window.GameAds)GameAds.preload()}catch(e){}},
-  show(cb){const m=this.mode();
-    if(m==='android'){let done=false;const h=e=>{if(done)return;done=true;removeEventListener('gameads',h);cb(e.detail)};addEventListener('gameads',h);try{GameAds.showRewarded()}catch(e){h({detail:'unavailable'})}}
-    else if(m==='test')testAd(cb);else cb('unavailable')}};
+  gameplayStart(){
+    try{
+      if(window.CrazyGames&&window.CrazyGames.SDK&&window.CrazyGames.SDK.game)window.CrazyGames.SDK.game.gameplayStart();
+      else if(window.PokiSDK)window.PokiSDK.gameplayStart();
+    }catch(e){}
+  },
+  gameplayStop(){
+    try{
+      if(window.CrazyGames&&window.CrazyGames.SDK&&window.CrazyGames.SDK.game)window.CrazyGames.SDK.game.gameplayStop();
+      else if(window.PokiSDK)window.PokiSDK.gameplayStop();
+    }catch(e){}
+  },
+  show(cb){
+    const m=this.mode();
+    if(m==='android'){
+      try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}
+      let done=false;const h=e=>{if(done)return;done=true;removeEventListener('gameads',h);try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb(e.detail)};
+      addEventListener('gameads',h);
+      try{GameAds.showRewarded()}catch(e){h({detail:'unavailable'})}
+    }else if(m==='crazygames'&&window.CrazyGames.SDK.ad){
+      window.CrazyGames.SDK.ad.requestAd('rewarded',{
+        adStarted:()=>{try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}},
+        adFinished:()=>{try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb('rewarded')},
+        adError:()=>{try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb('unavailable')}
+      });
+    }else if(m==='poki'&&window.PokiSDK){
+      try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}
+      window.PokiSDK.rewardedBreak().then(success=>{
+        try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){}
+        cb(success?'rewarded':'closed');
+      }).catch(()=>{
+        try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){}
+        cb('unavailable');
+      });
+    }else if(m==='test'){
+      try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}
+      testAd(r=>{try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb(r)});
+    }else{
+      cb('unavailable');
+    }
+  }
+};
 function testAd(cb){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;z-index:50;background:#000;color:#fff;display:grid;place-items:center;font:600 18px Quicksand,system-ui,sans-serif;text-align:center;padding:20px';let n=5;
   d.innerHTML='<div><div style="opacity:.55;font-size:13px;letter-spacing:.08em">TEST AD</div><div class="taN" style="font-size:48px;margin:10px 0">5</div><div>a real ad would play here</div><button class="taX" style="margin-top:24px;font:inherit;font-size:14px;background:none;color:#aaa;border:1px solid #555;border-radius:99px;padding:8px 18px;cursor:pointer">close early</button></div>';
   document.body.appendChild(d);const iv=setInterval(()=>{n--;d.querySelector('.taN').textContent=n;if(n<=0){clearInterval(iv);d.remove();cb('rewarded')}},1000);
@@ -1577,18 +1640,18 @@ function recordRun(won){if(!S.runId)S.runId=Date.now()+'-'+Math.random().toStrin
 const fmtTime=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
 function mostQuieted(){const arr=Object.entries(S.quieted).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4);
   return arr.length?'you quieted '+arr.map(([k,v])=>v+' '+ET[k].name).join(' · '):''}
-function start(){Sound.init();newGame();applyBoons();renderKit&&0;Ads.preload();for(const id of ['menu','over','pause','cards','explain'])$(id).hidden=true;$('keepBtn').hidden=true;$('hud').hidden=false;last=performance.now();updateHud();renderKit();renderSkills()}
+function start(){Sound.init();newGame();applyBoons();renderKit&&0;Ads.preload();Ads.gameplayStart();for(const id of ['menu','over','pause','cards','explain'])$(id).hidden=true;$('keepBtn').hidden=true;$('hud').hidden=false;last=performance.now();updateHud();renderKit();renderSkills()}
 function showOver(title,line){$('oTitle').textContent=title;$('oLine').textContent=line;$('oTime').textContent=fmtTime(S.t);$('oLvl').textContent=S.level;$('oKills').textContent=S.kills;$('oMost').textContent=mostQuieted()}
 function revive(){const P=S.p;S.continued=true;P.hp=P.maxHp*.5;S.state='play';$('over').hidden=true;S.shadow=null;
-  relief('one more breath');P.inv=2.5;S.breath=100*S.mods.breath;Sound.setMode('battle',2);last=performance.now()}
-function gameOver(){if(S.state==='over')return;S.state='over';$('contBtn').hidden=!(Ads.on()&&!S.continued);$('contMsg').textContent='';S.choosing=false;$('cards').hidden=true;$('keepBtn').hidden=true;Sound.play('lose');Sound.setMode('menu',0);
+  relief('one more breath');P.inv=2.5;S.breath=100*S.mods.breath;Sound.setMode('battle',2);last=performance.now();Ads.gameplayStart()}
+function gameOver(){if(S.state==='over')return;S.state='over';Ads.gameplayStop();$('contBtn').hidden=!(Ads.on()&&!S.continued);$('contMsg').textContent='';S.choosing=false;$('cards').hidden=true;$('keepBtn').hidden=true;Sound.play('lose');Sound.setMode('menu',0);
   const prev=+(store.get('hush.longest')||0);if(S.t>prev)store.set('hush.longest',Math.floor(S.t));
   showOver(pick(OVER_TITLES),'you grew into '+FORMS[S.p.tier]+'. it got '+TIERS[tierIdx()]+'.');recordRun(false);
   setTimeout(()=>{$('over').hidden=false},800)}
 function win(){if(!S||S.state==='over'||S.state==='won')return;if(S.state!=='play'){setTimeout(win,500);return}
-  S.state='won';$('contBtn').hidden=true;Sound.play('win');Sound.setMode('menu',0);store.set('hush.won','1');if(S.t>+(store.get('hush.longest')||0))store.set('hush.longest',Math.floor(S.t));
+  S.state='won';Ads.gameplayStop();$('contBtn').hidden=true;Sound.play('win');Sound.setMode('menu',0);store.set('hush.won','1');if(S.t>+(store.get('hush.longest')||0))store.set('hush.longest',Math.floor(S.t));
   showOver('quiet, at last','you didn\'t make them disappear. you learned to hold them.');recordRun(true);$('keepBtn').hidden=false;$('over').hidden=false}
-function toMenu(){S=null;Sound.setMode('menu',0);Sound.setPaused(false);for(const id of ['over','pause','cards','explain','hud','kit'])$(id).hidden=true;$('menu').hidden=false;menuInfo()}
+function toMenu(){S=null;Ads.gameplayStop();Sound.setMode('menu',0);Sound.setPaused(false);for(const id of ['over','pause','cards','explain','hud','kit'])$(id).hidden=true;$('menu').hidden=false;menuInfo()}
 function menuInfo(){$('lightMenu').innerHTML=lightTotal()?lightHTML(null):'';$('menuBoard').innerHTML=boardHTML(boardLoad(),null,5);const b=+(store.get('hush.longest')||0);$('bestLbl').textContent=b?'longest: '+fmtTime(b)+(store.get('hush.won')?' · you quieted panic':''):'';
   const m=metStore(),n=MET_KEYS.filter(k=>m[k]).length;
   $('metLbl').textContent=n?'shadows you\'ve met: '+n+' of '+MET_KEYS.length:'';
@@ -1598,7 +1661,7 @@ function renderPauseMet(){const box=$('pauseMet'),extra=MET_KEYS.filter(k=>S.met
   if(!ks.length){box.querySelector('.pml').textContent='you haven\'t met any of them yet.';return}
   const show=k=>{box.querySelector('.pml').textContent=ET[k].line+(S.quieted[k]?' · quieted '+S.quieted[k]:'');box.querySelectorAll('.pmc button').forEach(b=>b.classList.toggle('on',b.dataset.k===k))};
   box.querySelectorAll('.pmc button[data-k]').forEach(b=>b.onclick=()=>{Sound.play('click');show(b.dataset.k)});show(ks[ks.length-1])}
-function togglePause(){if(!S)return;if(S.state==='play')renderPauseMet();{const le=store.get('hush.lastErr');$('errNote').hidden=!le;if(le)$('errNote').textContent='last hiccup: '+le}if(S.state==='play'){S.state='paused';$('pause').hidden=false}else if(S.state==='paused'){S.state='play';$('pause').hidden=true;last=performance.now()}Sound.setPaused(S.state==='paused')}
+function togglePause(){if(!S)return;if(S.state==='play')renderPauseMet();{const le=store.get('hush.lastErr');$('errNote').hidden=!le;if(le)$('errNote').textContent='last hiccup: '+le}if(S.state==='play'){S.state='paused';$('pause').hidden=false;Ads.gameplayStop()}else if(S.state==='paused'){S.state='play';$('pause').hidden=true;last=performance.now();Ads.gameplayStart()}Sound.setPaused(S.state==='paused')}
 
 /* ---------------- feel settings: vibration and screen shake ---------------- */
 let VIB=store.get('hush.vib')!=='0',SHAKE=store.get('hush.shake')!=='0';
@@ -1610,7 +1673,7 @@ for(const id of ['shakeTog','shakeTog2'])$(id).onclick=()=>{SHAKE=!SHAKE;store.s
 feelToggles();
 $('playBtn').onclick=start;$('contBtn').onclick=askContinue;$('againBtn').onclick=start;$('menuBtn').onclick=toMenu;$('quitBtn').onclick=toMenu;
 $('keepBtn').onclick=()=>{if(!S||S.state!=='won')return;S.endless=true;S.state='play';$('over').hidden=true;$('keepBtn').hidden=true;
-  S.banner={txt:'they come back',t:2.4};S.thought={txt:'healing isn\'t a straight line',t:4};last=performance.now()};
+  S.banner={txt:'they come back',t:2.4};S.thought={txt:'healing isn\'t a straight line',t:4};last=performance.now();Ads.gameplayStart()};
 $('resumeBtn').onclick=togglePause;$('pauseBtn').onclick=togglePause;
 for(const [id,k] of [['musicTog','music'],['musicTog2','music'],['sfxTog','sfx'],['sfxTog2','sfx']])$(id).onclick=()=>{Sound.init();Sound.toggle(k);syncToggles()};
 for(const id of ['numTog','numTog2'])$(id).onclick=()=>{Sound.play('click');NUMS=!NUMS;store.set('hush.nums',NUMS?'1':'0');if(S&&!NUMS)S.dnums.length=0;syncToggles()};
